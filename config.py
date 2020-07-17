@@ -9,9 +9,9 @@
 
 Bandwidth = 125
 CodingRate = 1
-# packet size per SFs
-PcktLength_SF = [20,20,20,20,20,20]
-maxBSReceives = 8
+
+
+graphics = 1
 
 Ptx = 14
 gamma = 2.08
@@ -20,4 +20,5 @@ var = 2.0
 Lpld0 = 127.41
 GL = 0
 
-DLTime = 1000 # msec
+DLtime = 1000 # msec
+MAX_RETRY = 20

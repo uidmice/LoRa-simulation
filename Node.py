@@ -1,8 +1,10 @@
 import numpy as np
+from enum import Enum, auto
+import math
 
 from LoRaParameters import LoRaParameters
 from Gateway import Gateway, DownlinkPacket
-from TransmissionModel import AirInterface
+from TransmissionInterface import AirInterface
 from config import *
 
 class NodeState(Enum):
@@ -11,8 +13,8 @@ class NodeState(Enum):
     RX = auto()
 
 class Node():
-    def __init__(self, nodeid, en_prof: EnergyProfile, lora_para:LoRaParameters, x, y,
-        base_stations,  payload_size, air_interface:AirInterface, env ):
+    def __init__(self, nodeid, energy_profile, lora_para:LoRaParameters, x, y,
+        base_stations,  payload_size, air_interface:AirInterface, sim_env ):
         self.id = nodeid
         self.para = lora_para
         self.x = x
@@ -21,23 +23,60 @@ class Node():
         self.gain = 1
         self.energy_profile = energy_profile
         self.base_stations = base_stations
-        self.process_time = process_time
         self.current_state = NodeState.SLEEP
         self.payload_size = payload_size
         self.air_interface = air_interface
-        self.env = env
+        self.unique_packet_id = 0
+        self.num_unique_packets_sent = 0
+        self.num_packets_sent = 0
+        self.packet_to_send = None
+        self.sim_env = sim_env
 
-    def transmit( self, env_g):
-        if (np.random.random()> env_g):
-            self.current_state = NodeState.TX
-            p = UplinkPacket(self, self.payload_size, np.random.randint(1,2000), self.air_interface)
-            p.send(self.env.now)
-            yield self.env.timeout(p.time_on_air)
-            self.current_state = NodeState.RX
-            yield self.env.timeout(config.DLtime)
-            self.current_state = NodeState.SLEEP
-        else:
-            yield self.env.timeout(3000)
+    def run(self):
+        while True:
+            # added also a random wait to accommodate for any timing issues on the node itself
+            random_wait = np.random.randint(0,  1000)
+            yield self.sim_env.timeout(random_wait)
+
+            # ------------SENDING------------ #
+            if np.random.random() < 0.1:
+                self.unique_packet_id += 1
+                print('{}: SENDING packet #{}'.format(self.id, self.unique_packet_id))
+
+                packet = UplinkPacket(node=self, id=self.unique_packet_id)
+                self.packet_to_send = packet
+                lost = yield self.sim_env.process(self.send(packet))
+                if lost:
+                    yield self.sim_env.process(self.message_lost())
+                print('{}: DONE sending packet #{}'.format(self.id, self.unique_packet_id))
+                self.num_unique_packets_sent += 1  # at the end to be sure that this packet was tx
+
+
+    def send(self, packet):
+        self.current_state = NodeState.TX
+        packet.send(self.sim_env.now)
+        yield self.sim_env.timeout(int(np.ceil(packet.time_on_air)))
+        collided = self.air_interface.collision(packet)
+        lost = collided
+        if not collided:
+            for bs in packet.collided:
+                if not packet.collided[bs]:
+                    self.base_stations[bs].receive_packet(packet)
+            if not any(packet.received):
+                lost = True
+        self.current_state = NodeState.RX
+        yield self.sim_env.timeout(DLtime)
+        self.current_state = NodeState.SLEEP
+        return lost
+
+    def message_lost(self):
+        p = self.packet_to_send
+        p.lost_cnt += 1
+        if p.lost_cnt < MAX_RETRY:
+            lost = yield self.sim_env.process(self.send(p))
+            if lost:
+                yield self.sim_env.process(self.message_lost())
+
 
 class EnergyProfile:
     rx_power_mA = [10.3, 11.1, 12.6]
@@ -59,10 +98,10 @@ class EnergyProfile:
 
     def get_E_transmit(self, tp_dbm, t):
         # return (10**(tp_dbm/10.0) * tx_power_cof_k + tx_power_cof_b) *  self.Vdd * t
-        return tx_power_mA[range(-2,21).index(tp_dbm)]*  self.Vdd * t
+        return EnergyProfile.tx_power_mA[range(-2,21).index(tp_dbm)]*  self.Vdd * t
 
     def get_E_receive (self, bw, t):
-        return rx_power_mA[[125,250,500].index(bw)] * self.Vdd * t
+        return EnergyProfile.rx_power_mA[[125,250,500].index(bw)] * self.Vdd * t
 
 
 def time_on_air(sf, bw, cr,  h, de, pl):
@@ -79,19 +118,21 @@ def time_on_air(sf, bw, cr,  h, de, pl):
     return Tpream + Tpayload # msec
 
 class UplinkPacket():
-    def __init__(self, node: Node, payload_size,  id, interface):
+    def __init__(self, node: Node,  id):
         self.id = id
         self.node = node
         self.para = node.para
-        self.payload_size = payload_size
+        self.payload_size = node.payload_size
         self.overlapped_packets = []
-        self.received = False
+        self.received = {}
+        self.collided = {}
         self.rss = {}
         self.snr = {}
         self.start_at = None
         self.end_at = None
         self.time_on_air = None
-        self.transmissionInterface = interface
+        self.lost_cnt = 0
+        self.transmissionInterface = node.air_interface
 
     def airtime(self): #in ms
         if self.time_on_air is None:
@@ -112,5 +153,12 @@ class UplinkPacket():
 
     def send(self, t):
         self.start_at = t
-        self.end_at = self.start_at + self.airtime(self)
+        self.end_at = self.start_at + self.airtime()
+        self.node.num_packets_sent += 1
+        for b in self.node.base_stations:
+            dist = np.sqrt((self.node.x-b.x)**2+(self.node.y-b.y)**2)
+            self.rss[b.id] = self.transmissionInterface.prop_model.tp_to_rss(False, self.para.tp, dist)
+            self.snr[b.id] =self.transmissionInterface.snr_model.rss_to_snr(self.rss[b.id])
+            self.received[b.id] = False
+            self.collided[b.id] = False
         self.transmissionInterface.register(self)

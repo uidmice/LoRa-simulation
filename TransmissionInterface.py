@@ -3,7 +3,7 @@ import random
 import numpy as np
 
 from Gateway import Gateway
-from Node import Node, UplinkPacket
+from LoRaParameters import LoRaParameters
 
 class PropagationModel:
     # http://ieeexplore.ieee.org.kuleuven.ezproxy.kuleuven.be/stamp/stamp.jsp?tp=&arnumber=7377400
@@ -39,95 +39,67 @@ class AirInterface:
     def __init__(self, prop_model = None, snr_model = None):
         self.prop_model = prop_model
         self.snr_model = snr_model
-        self.packet_in_air = []
+        self.packets_in_air = {}
+        for i in range(len(LoRaParameters.CHANNELS)):
+            self.packets_in_air[i] = []
         if self.prop_model==None:
             self.prop_model = PropagationModel()
         if self.snr_model == None:
             self.snr_model = SNRModel()
 
 
-    @staticmethod
-    def frequency_collision(p1: UplinkPacket, p2: UplinkPacket):
-        """frequencyCollision, conditions
-                |f1-f2| <= 120 kHz if f1 or f2 has bw 500
-                |f1-f2| <= 60 kHz if f1 or f2 has bw 250
-                |f1-f2| <= 30 kHz if f1 or f2 has bw 125
-        """
-
-        p1_freq = p1.para.freq
-        p2_freq = p2.para.freq
-
-        p1_bw = p1.para.bw
-        p2_bw = p2.para.bw
-
-        if abs(p1_freq - p2_freq) <= 120000 and (p1_bw == 500 or p2_bw == 500):
-            print("frequency coll 500")
-            return True
-        elif abs(p1_freq - p2_freq) <= 60000 and (p1_bw == 250 or p2_bw == 250):
-            print("frequency coll 250")
-            return True
-        elif abs(p1_freq - p2_freq) <= 30000 and (p1_bw == 125 or p2_bw == 125):
-            print("frequency coll 125")
-            return True
-
-        print("no frequency coll")
-        return False
-
-    @staticmethod
-    def sf_collision(p1: UplinkPacket, p2: UplinkPacket):
-        if p1.para.sf == p2.para.sf:
-            print("collision sf node {} and node {}".format(p1.node.id, p2.node.id))
-            return True
-        print("no sf collision")
-        return False
-
-    def register(self, p: UplinkPacket):
-        self.packet_in_air.append(p)
-        for packet in self.packet_in_air:
-            if not ((p.start_at > packet.end_at) or (p.end_at<packet.start_at)):
-                p.overlapped_packets.append(packet)
-                packet.overlapped_packets.append(p)
-        self.packet_in_air.sort(key = lambda x: x.start_at)
-
     # @staticmethod
-    # def power_collision(me: UplinkPacket, other: UplinkPacket, time_collided_nodes):
-    #     power_threshold = 6  # dB
-    #     print("pwr: node {0.node.id} {0.rss:3.2f} dBm node {1.node.id} {1.rss:3.2f} dBm; diff {2:3.2f} dBm"
-    #             .format(me, other, round(me.rss - other.rss, 2) ) )
-    #     if abs(me.rss - other.rss) < power_threshold:
-    #         print("collision pwr both node {} and node {} (too close to each other)"
-    #             .format(me.node.id, other.node.id))
-    #         if me in time_collided_nodes:
-    #             me.collided = True
-    #         if other in time_collided_nodes:
-    #             other.collided = True
+    # def frequency_collision(p1: UplinkPacket, p2: UplinkPacket):
+    #     """frequencyCollision, conditions
+    #             |f1-f2| <= 120 kHz if f1 or f2 has bw 500
+    #             |f1-f2| <= 60 kHz if f1 or f2 has bw 250
+    #             |f1-f2| <= 30 kHz if f1 or f2 has bw 125
+    #     """
     #
-    #     elif me.rss - other.rss < power_threshold:
-    #         # me has been overpowered by other
-    #         # me will collided if also time_collided
+    #     p1_freq = p1.para.freq
+    #     p2_freq = p2.para.freq
     #
-    #         if me in time_collided_nodes:
-    #             print("collision pwr both node {} has collided by node {}".format(me.node.id, other.node.id))
-    #             me.collided = True
-    #     else:
-    #         if other in time_collided_nodes:
-    #             print("collision pwr both node {} has collided by node {}".format(other.node.id, me.node.id))
-    #             other.collided = True
+    #     p1_bw = p1.para.bw
+    #     p2_bw = p2.para.bw
     #
-    # def collision(self, packet: UplinkPacket) -> bool:
-    #     print("CHECK node {} (sf:{} bw:{} channel:{}) #others: {}".format(
-    #             packet.node.id, packet.para.sf, packet.para.bw, packet.para.channel,
-    #             len(self.packages_in_air)))
-    #     if packet.collided:
+    #     if abs(p1_freq - p2_freq) <= 120000 and (p1_bw == 500 or p2_bw == 500):
+    #         print("frequency coll 500")
     #         return True
-    #     for other in self.packages_in_air:
-    #         if other.node.id != packet.node.id:
-    #             print(">> node {} (sf:{} bw:{} channel:{})".format(
-    #                     other.node.id, other.para.sf, other.para.bw,
-    #                     other.para.channel))
-    #             if AirInterface.frequency_collision(packet, other):
-    #                 if AirInterface.sf_collision(packet, other):
-    #                     time_collided_nodes = AirInterface.timing_collision(packet, other)
-    #                     if time_collided_nodes is not None:
-    #                         AirInterface.power_collision(packet, other, time_collided_nodes)
-    #     return packet.collided
+    #     elif abs(p1_freq - p2_freq) <= 60000 and (p1_bw == 250 or p2_bw == 250):
+    #         print("frequency coll 250")
+    #         return True
+    #     elif abs(p1_freq - p2_freq) <= 30000 and (p1_bw == 125 or p2_bw == 125):
+    #         print("frequency coll 125")
+    #         return True
+    #
+    #     print("no frequency coll")
+    #     return False
+
+    @staticmethod
+    def sf_collision(p1, p2):
+        if p1.para.sf == p2.para.sf:
+            return True
+        return False
+
+    def register(self, p):
+        self.packets_in_air[p.para.channel].append(p)
+        for packet in self.packets_in_air[p.para.channel]: #same frequency
+            if not ((p.start_at > packet.end_at) or (p.end_at<packet.start_at)): #time overlap
+                if AirInterface.sf_collision(p, packet): # sf collision
+                    p.overlapped_packets.append(packet)
+                    packet.overlapped_packets.append(p)
+
+    def collision(self, packet):
+        threshold = 6
+        for bs in packet.rss:
+            for p in packet.overlapped_packets:
+                if packet.rss[bs] - p.rss[bs] < threshold:
+                    packet.collided[bs] = True
+                if p.rss[bs] - packet.rss[bs] < threshold:
+                    p.collided[bs] = True
+                p.overlapped_packets.remove(packet)
+        self.packets_in_air[packet.para.channel].remove(packet)
+        gc.collect()
+        if all(packet.collided.values()):
+            return True
+        return False
