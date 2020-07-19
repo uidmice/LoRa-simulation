@@ -19,7 +19,7 @@ class Node():
         self.para = lora_para
         self.x = x
         self.y = y
-        print('node %d' %nodeid, "  @  (", self.x, ",", self.y,")")
+        print('node %d' %nodeid, "  @  (", self.x, ",", self.y,")", "ch: ", self.para.channel, "sf: ", self.para.sf)
         self.gain = 1
         self.energy_profile = energy_profile
         self.base_stations = base_stations
@@ -41,16 +41,16 @@ class Node():
             # ------------SENDING------------ #
             if np.random.random() < 0.1:
                 self.unique_packet_id += 1
-                print('{}: SENDING packet #{}'.format(self.id, self.unique_packet_id))
+                print('{}: Node {} SENDING packet #{}'.format(self.sim_env.now, self.id, self.unique_packet_id))
 
                 packet = UplinkPacket(node=self, id=self.unique_packet_id)
                 self.packet_to_send = packet
                 lost = yield self.sim_env.process(self.send(packet))
                 if lost:
                     yield self.sim_env.process(self.message_lost())
-                print('{}: DONE sending packet #{}'.format(self.id, self.unique_packet_id))
+                print('{}: Node {} DONE sending packet #{}'.format(self.sim_env.now, self.id, self.unique_packet_id))
                 self.num_unique_packets_sent += 1  # at the end to be sure that this packet was tx
-
+            yield self.sim_env.timeout(600000)
 
     def send(self, packet):
         self.current_state = NodeState.TX
@@ -62,7 +62,9 @@ class Node():
             for bs in packet.collided:
                 if not packet.collided[bs]:
                     self.base_stations[bs].receive_packet(packet)
-            if not any(packet.received):
+            # print(packet.received)
+            if not any(packet.received.values()):
+                # print("enter error")
                 lost = True
         self.current_state = NodeState.RX
         yield self.sim_env.timeout(DLtime)
@@ -72,6 +74,9 @@ class Node():
     def message_lost(self):
         p = self.packet_to_send
         p.lost_cnt += 1
+        random_wait = np.random.randint(0,  10**p.lost_cnt)
+        yield self.sim_env.timeout(random_wait)
+        print("{}: Packet #{} from Node {} lost; RESENDING".format(self.sim_env.now, p.id, self.id))
         if p.lost_cnt < MAX_RETRY:
             lost = yield self.sim_env.process(self.send(p))
             if lost:
@@ -161,4 +166,9 @@ class UplinkPacket():
             self.snr[b.id] =self.transmissionInterface.snr_model.rss_to_snr(self.rss[b.id])
             self.received[b.id] = False
             self.collided[b.id] = False
+        # print("Packet #{} from Node {} TOA {} ms".format(self.id, self.node.id, self.time_on_air))
+        # print("Packet #{} from Node {} rss:".format(self.id, self.node.id), self.rss)
+        # print("Packet #{} from Node {} snr:".format(self.id, self.node.id), self.snr)
+        # print("Packet #{} from Node {} sf:".format(self.id, self.node.id), self.para.sf)
+        # print("Packet #{} from Node {} ch:".format(self.id, self.node.id), self.para.channel)
         self.transmissionInterface.register(self)

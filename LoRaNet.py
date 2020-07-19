@@ -40,7 +40,7 @@ if (graphics == 1):
     ax = plt.gcf().gca()
     ax.add_artist(plt.Circle((0, 0), 3, fill=True, color='green'))
 
-gateways.append(Gateway(1, 0, 0,  sim_env))
+gateways.append(Gateway(0, 0, 0,  sim_env))
 
 n_loc = np.loadtxt('deployment.dat')
 for i in range(len(n_loc)):

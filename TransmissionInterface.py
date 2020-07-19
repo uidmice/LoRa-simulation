@@ -82,16 +82,18 @@ class AirInterface:
         return False
 
     def register(self, p):
-        self.packets_in_air[p.para.channel].append(p)
         for packet in self.packets_in_air[p.para.channel]: #same frequency
             if not ((p.start_at > packet.end_at) or (p.end_at<packet.start_at)): #time overlap
                 if AirInterface.sf_collision(p, packet): # sf collision
                     p.overlapped_packets.append(packet)
                     packet.overlapped_packets.append(p)
+        self.packets_in_air[p.para.channel].append(p)
 
     def collision(self, packet):
         threshold = 6
         for bs in packet.rss:
+            # print("bs: ", bs)
+            # print(packet.overlapped_packets)
             for p in packet.overlapped_packets:
                 if packet.rss[bs] - p.rss[bs] < threshold:
                     packet.collided[bs] = True

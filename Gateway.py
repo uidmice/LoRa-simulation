@@ -26,9 +26,11 @@ class Gateway:
         sf = packet.para.sf
         bw = packet.para.bw
         snr_threshold = 10.0
+        # print("channel: " , packet.para.channel)
         if packet.para.channel in self.channels:
             if packet.rss[self.id]>Gateway.SENSITIVITY[sf][[125, 250, 500].index(bw)]:
                 diff = packet.snr[self.id] - Gateway.SNR[sf]
+                # print("diff: ", diff)
                 if diff > snr_threshold:
                     packet.received[self.id] = True
                 elif diff > 0:
