@@ -14,7 +14,7 @@ class NodeState(Enum):
 
 class Node():
     def __init__(self, nodeid, energy_profile, lora_para:LoRaParameters, x, y,
-        base_stations,  payload_size, air_interface:AirInterface, sim_env ):
+        base_stations,  payload_size, air_interface:AirInterface, sim_env, external = None ):
         self.id = nodeid
         self.para = lora_para
         self.x = x
@@ -31,6 +31,7 @@ class Node():
         self.num_packets_sent = 0
         self.packet_to_send = None
         self.sim_env = sim_env
+        self.external = external
 
     def run(self):
         while True:
@@ -39,7 +40,10 @@ class Node():
             yield self.sim_env.timeout(random_wait)
 
             # ------------SENDING------------ #
-            if np.random.random() < 0.1:
+            wake_up_prob = 0.1
+            if self.external:
+                wake_up_prob = self.external.sense(self.x, self.y)
+            if np.random.random() < wake_up_prob:
                 self.unique_packet_id += 1
                 packet = UplinkPacket(node=self, id=self.unique_packet_id)
                 print(self.sim_env.now, ": ",  str(packet), " SENDING")

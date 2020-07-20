@@ -16,6 +16,7 @@ from Node import Node, EnergyProfile
 from Gateway import Gateway, DownlinkPacket
 from TransmissionInterface import AirInterface
 from LoRaParameters import LoRaParameters
+from External import RandomExternal
 from config import *
 
 if len(sys.argv) >= 3:
@@ -29,11 +30,8 @@ else:
 
 
 nodes = []
-packetsAtBS = []
 gateways = []
-sim_env = simpy.Environment()
-air = AirInterface(sim_env)
-gateways.append(Gateway(0, 0, 0,  sim_env))
+
 
 
 # n_loc = np.loadtxt('deployment.dat')
@@ -49,25 +47,39 @@ gateways.append(Gateway(0, 0, 0,  sim_env))
 #     sim_env.process(node.run()) #10% chance of sending a packet
 
 plt.ion()
-plt.figure()
-plt.xlim([-MAX_DISTANCE, MAX_DISTANCE])
-plt.ylim([-MAX_DISTANCE, MAX_DISTANCE])
-ax = plt.gcf().gca()
-ax.add_artist(plt.Circle((0, 0), GRID, fill=False, color='green'))
+fig = plt.figure()
+ax = fig.add_subplot(1,1,1)
 
+sim_env = simpy.Environment()
+air = AirInterface(sim_env)
+external = RandomExternal(sim_env)
+gateways.append(Gateway(0, 0, 0,  sim_env))
+im = ax.imshow(external.f, alpha=.5, interpolation='bilinear')
+plt.colorbar(im, cmap='viridis')
+plt.axis('off')
+plt.draw()
+plt.show()
+
+newax = fig.add_axes(ax.get_position(), frameon=False)
+newax.add_artist(plt.Circle((0, 0), GRID, fill=False, color='green'))
+newax.set_xlim([-MAX_DISTANCE, MAX_DISTANCE])
+newax.set_ylim([-MAX_DISTANCE, MAX_DISTANCE])
 for i in range(num_nodes):
-    x = np.random.randint(-CORD, CORD) * GRID
-    y = np.random.randint(-CORD, CORD) * GRID
+    x = np.random.randint(-CORD, CORD+1) * GRID
+    y = np.random.randint(-CORD, CORD+1) * GRID
     node = Node(i, EnergyProfile(3.3), LoRaParameters(i%Gateway.NO_CHANNELS, sf = 12), x,
-          y,gateways, 20, air, sim_env )
+          y,gateways, 20, air, sim_env , external = external)
     # node = Node(i, EnergyProfile(3.3), LoRaParameters(0, sf = 12), x, y,gateways, 20, air, sim_env )
     nodes.append(node)
-    ax.add_artist(plt.Circle((x, y), GRID/2, fill=True, color='blue'))
+    newax.add_artist(plt.Circle((x, y), GRID/2, fill=True, color='blue'))
     sim_env.process(node.run())
     plt.draw()
     plt.pause(0.001)
     plt.show()
-sim_env.run(sim_time*60000)
+
+sim_env.process(external.update(im))
+
+sim_env.run(sim_time*MINUTE_TO_MS)
 
 received = [x.num_unique_packets_sent for x in nodes]
 sent = [x.num_packets_sent for x in nodes]

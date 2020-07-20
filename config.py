@@ -18,4 +18,7 @@ MAX_RETRY = 20
 
 MAX_DISTANCE = 5000 # 5 km
 GRID = 100 #100m
-CORD = MAX_DISTANCE/GRID
+CORD = int(MAX_DISTANCE/GRID)
+
+MINUTE_TO_MS = 60000 # minute to ms
+UPDATA_RATE = 60000 #update external environment every 1 minute
