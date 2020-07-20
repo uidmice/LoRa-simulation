@@ -13,12 +13,9 @@ CodingRate = 1
 
 graphics = 1
 
-Ptx = 14
-gamma = 2.08
-d0 = 40.0
-var = 2.0
-Lpld0 = 127.41
-GL = 0
-
 DLtime = 1000 # msec
 MAX_RETRY = 20
+
+MAX_DISTANCE = 5000 # 5 km
+GRID = 100 #100m
+CORD = MAX_DISTANCE/GRID

@@ -1,12 +1,13 @@
 import gc
 import random
 import numpy as np
+import simpy
 
 from Gateway import Gateway
 from LoRaParameters import LoRaParameters
 
 class PropagationModel:
-    # http://ieeexplore.ieee.org.kuleuven.ezproxy.kuleuven.be/stamp/stamp.jsp?tp=&arnumber=7377400
+    #log distance path loss model (or log normal shadowing)
     def __init__(self, gamma=2.32, d0=1000.0, std=7.8, Lpld0=128.95, GL=0):
         self.gamma = gamma
         self.d0 = d0
@@ -36,16 +37,53 @@ class SNRModel:
         return rss - self.noise_floor
 
 class AirInterface:
-    def __init__(self, prop_model = None, snr_model = None):
+    def __init__(self, sim_env, prop_model = None, snr_model = None):
         self.prop_model = prop_model
         self.snr_model = snr_model
         self.packets_in_air = {}
+        self.sems = {}
         for i in range(len(LoRaParameters.CHANNELS)):
             self.packets_in_air[i] = []
+            self.sems[i] = simpy.Resource(sim_env, capacity=1)
         if self.prop_model==None:
             self.prop_model = PropagationModel()
         if self.snr_model == None:
             self.snr_model = SNRModel()
+
+
+    @staticmethod
+    def sf_collision(p1, p2):
+        if p1.para.sf == p2.para.sf:
+            return True
+        return False
+
+    def register(self, p):
+        ch = p.para.channel
+        with self.sems[ch].request() as req:
+            for packet in self.packets_in_air[ch]: #same frequency
+                if not ((p.start_at > packet.end_at) or (p.end_at<packet.start_at)): #time overlap
+                    if AirInterface.sf_collision(p, packet): # sf collision
+                        p.overlapped_packets.append(packet)
+                        packet.overlapped_packets.append(p)
+            self.packets_in_air[ch].append(p)
+
+    def collision(self, packet):
+        threshold = 6
+        ch = packet.para.channel
+        with self.sems[ch].request() as req:
+            for bs in packet.rss:
+                for p in packet.overlapped_packets:
+                    if packet.rss[bs] - p.rss[bs] < threshold:
+                        packet.collided[bs] = True
+                    if p.rss[bs] - packet.rss[bs] < threshold:
+                        p.collided[bs] = True
+                    p.overlapped_packets.remove(packet)
+            self.packets_in_air[ch].remove(packet)
+            packet.overlapped_packets= []
+        gc.collect()
+        if all(packet.collided.values()):
+            return True
+        return False
 
 
     # @staticmethod
@@ -74,34 +112,3 @@ class AirInterface:
     #
     #     print("no frequency coll")
     #     return False
-
-    @staticmethod
-    def sf_collision(p1, p2):
-        if p1.para.sf == p2.para.sf:
-            return True
-        return False
-
-    def register(self, p):
-        for packet in self.packets_in_air[p.para.channel]: #same frequency
-            if not ((p.start_at > packet.end_at) or (p.end_at<packet.start_at)): #time overlap
-                if AirInterface.sf_collision(p, packet): # sf collision
-                    p.overlapped_packets.append(packet)
-                    packet.overlapped_packets.append(p)
-        self.packets_in_air[p.para.channel].append(p)
-
-    def collision(self, packet):
-        threshold = 6
-        for bs in packet.rss:
-            # print("bs: ", bs)
-            # print(packet.overlapped_packets)
-            for p in packet.overlapped_packets:
-                if packet.rss[bs] - p.rss[bs] < threshold:
-                    packet.collided[bs] = True
-                if p.rss[bs] - packet.rss[bs] < threshold:
-                    p.collided[bs] = True
-                p.overlapped_packets.remove(packet)
-        self.packets_in_air[packet.para.channel].remove(packet)
-        gc.collect()
-        if all(packet.collided.values()):
-            return True
-        return False
