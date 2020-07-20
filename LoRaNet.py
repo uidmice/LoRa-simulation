@@ -52,9 +52,9 @@ ax = fig.add_subplot(1,1,1)
 
 sim_env = simpy.Environment()
 air = AirInterface(sim_env)
-external = RandomExternal(sim_env)
+external = RandomExternal(sim_env, sigma = 1, gamma = 0.5)
 gateways.append(Gateway(0, 0, 0,  sim_env))
-im = ax.imshow(external.f, alpha=.5, interpolation='gaussian')
+im = ax.imshow(external.f, alpha=.5, interpolation='bicubic')
 plt.colorbar(im, cmap='viridis')
 plt.axis('off')
 plt.draw()
@@ -83,17 +83,29 @@ sim_env.run(sim_time*MINUTE_TO_MS)
 
 received = [x.num_unique_packets_sent for x in nodes]
 sent = [x.num_packets_sent for x in nodes]
+time = [x.transmit_time for x in nodes]
+energy_usage = [x.energy_profile.origin_E_tot - x.energy_profile.E_tot for x in nodes]
+
 
 print('Of ', num_nodes, " nodes:")
 print("Numbers of packets sent (including retransmission):")
 print(sent)
 print("Numbers of packets successfully received:")
 print(received)
+print("Total transmission time: (s)")
+print(np.array(time)/1000.0)
+print("Total energy consumption: (J)")
+print(np.array(energy_usage)/1000.0)
 print('')
 tol_sent = sum(sent)
 tol_receive = sum(received)
+ave_e = np.average(energy_usage)
+max_e = np.max(energy_usage)
 print("Total number of packets sent: ", tol_sent)
 print("Total number of packets successfully received: ", tol_receive)
+print("Average duty circle: ", np.average(time)/(sim_time*MINUTE_TO_MS)*100, "%")
+print("Average energy consumption: {:.2f}(mJ), {:.2f}% ".format(ave_e, ave_e/BATTERY_ENERGY*100) )
+print("Maximum energy consumption: {:.2f}(mJ), {:.2f}%".format(max_e, max_e/BATTERY_ENERGY*100))
 print("Success ratio: {:.2f}%".format( tol_receive*1.0/tol_sent*100))
 
 

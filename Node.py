@@ -29,6 +29,8 @@ class Node():
         self.unique_packet_id = 0
         self.num_unique_packets_sent = 0
         self.num_packets_sent = 0
+        self.transmit_time = 0
+        self.receive_time = 0
         self.packet_to_send = None
         self.sim_env = sim_env
         self.external = external
@@ -60,6 +62,9 @@ class Node():
         self.current_state = NodeState.TX
         packet.send(self.sim_env.now)
         yield self.sim_env.timeout(int(np.ceil(packet.time_on_air)))
+        #not accounting energy cost to run on-device algorithm
+        self.energy_profile.E_tot -= self.energy_profile.get_E_transmit(packet.para.tp, packet.time_on_air)
+        self.transmit_time += packet.time_on_air
         collided = self.air_interface.collision(packet)
         lost = collided
         if not collided:
@@ -70,6 +75,8 @@ class Node():
                 lost = True
         self.current_state = NodeState.RX
         yield self.sim_env.timeout(DLtime)
+        self.energy_profile.E_tot -= self.energy_profile.get_E_receive(packet.para.bw, DLtime)
+        self.receive_time += DLtime
         self.current_state = NodeState.SLEEP
         return lost
 
@@ -101,20 +108,21 @@ class EnergyProfile:
           105, 115, 125]                                       # PA_BOOST/PA1+PA2: 18..20
     tx_power_cof_k = 0.6
     tx_power_cof_b = 17
-    def __init__(self, proc_power, Vdd = 3.3,  E_tot = 22572000):
+    def __init__(self, proc_power, Vdd = 3.3,  E_tot = BATTERY_ENERGY):
         self.proc_power_mW = proc_power
         self.Vdd = Vdd
+        self.origin_E_tot = E_tot
         self.E_tot = E_tot
 
     def get_E_compute(self, t):
-        return self.proc_power_mW * t
+        return self.proc_power_mW * t/1000
 
     def get_E_transmit(self, tp_dbm, t):
         # return (10**(tp_dbm/10.0) * tx_power_cof_k + tx_power_cof_b) *  self.Vdd * t
-        return EnergyProfile.tx_power_mA[range(-2,21).index(tp_dbm)]*  self.Vdd * t
+        return EnergyProfile.tx_power_mA[range(-2,21).index(tp_dbm)]*  self.Vdd * t/1000
 
     def get_E_receive (self, bw, t):
-        return EnergyProfile.rx_power_mA[[125,250,500].index(bw)] * self.Vdd * t
+        return EnergyProfile.rx_power_mA[[125,250,500].index(bw)] * self.Vdd * t/1000
 
 
 def time_on_air(sf, bw, cr,  h, de, pl):
