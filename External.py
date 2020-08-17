@@ -42,3 +42,10 @@ class RandomExternal:
                 plt.draw()
                 plt.pause(0.001)
                 plt.show()
+
+class ConstantExternal:
+    def __init__(self, prob):
+        self.prob = prob
+
+    def sense (self, x, y):
+        return self.prob

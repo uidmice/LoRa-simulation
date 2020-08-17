@@ -12,6 +12,7 @@ CodingRate = 1
 
 
 graphics = 1
+DEBUG = 1
 
 DLtime = 1000 # msec
 MAX_RETRY = 20
@@ -22,4 +23,4 @@ CORD = int(MAX_DISTANCE/GRID)
 
 MINUTE_TO_MS = 60000 # minute to ms
 UPDATA_RATE = 60000 #update external environment every 1 minute
-BATTERY_ENERGY = 22572000 # 3.3V 1900 hAm battery
+BATTERY_ENERGY = 22572000 # 3.3V 1900 mAh battery

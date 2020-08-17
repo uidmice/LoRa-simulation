@@ -17,6 +17,7 @@ from Gateway import Gateway, DownlinkPacket
 from TransmissionInterface import AirInterface
 from LoRaParameters import LoRaParameters
 from External import RandomExternal
+from Server import Server
 from config import *
 
 if len(sys.argv) >= 3:
@@ -54,6 +55,7 @@ sim_env = simpy.Environment()
 air = AirInterface(sim_env)
 external = RandomExternal(sim_env, sigma = 1, gamma = 0.5)
 gateways.append(Gateway(0, 0, 0,  sim_env))
+server = Server()
 im = ax.imshow(external.f, alpha=.5, interpolation='bicubic')
 plt.colorbar(im, cmap='viridis')
 plt.axis('off')
@@ -64,11 +66,14 @@ newax = fig.add_axes(ax.get_position(), frameon=False)
 newax.add_artist(plt.Circle((0, 0), GRID, fill=False, color='green'))
 newax.set_xlim([-MAX_DISTANCE, MAX_DISTANCE])
 newax.set_ylim([-MAX_DISTANCE, MAX_DISTANCE])
+
+# input('Press Enter to continue ...')
+
 for i in range(num_nodes):
     x = np.random.randint(-CORD, CORD+1) * GRID
     y = np.random.randint(-CORD, CORD+1) * GRID
     node = Node(i, EnergyProfile(3.3), LoRaParameters(i%Gateway.NO_CHANNELS, sf = 12), x,
-          y,gateways, 20, air, sim_env , external = external)
+          y,gateways, 20, server, air, sim_env , external = external)
     # node = Node(i, EnergyProfile(3.3), LoRaParameters(0, sf = 12), x, y,gateways, 20, air, sim_env )
     nodes.append(node)
     newax.add_artist(plt.Circle((x, y), GRID/2, fill=True, color='blue'))

@@ -6,6 +6,7 @@ from LoRaParameters import LoRaParameters
 from Gateway import Gateway, DownlinkPacket
 from TransmissionInterface import AirInterface
 from config import *
+from Server import Server
 
 class NodeState(Enum):
     SLEEP = auto()
@@ -14,12 +15,14 @@ class NodeState(Enum):
 
 class Node():
     def __init__(self, nodeid, energy_profile, lora_para:LoRaParameters, x, y,
-        base_stations,  payload_size, air_interface:AirInterface, sim_env, external = None ):
+        base_stations,  payload_size, server : Server, air_interface:AirInterface, sim_env, external = None, adr_ack_limit = 10, adr_ack_delay = 5 ):
         self.id = nodeid
         self.para = lora_para
         self.x = x
         self.y = y
-        print('node %d' %nodeid, "  @  (", self.x, ",", self.y,")", "ch: ", self.para.channel, "sf: ", self.para.sf)
+        self.server = server
+        if DEBUG:
+            print('node %d' %nodeid, "  @  (", self.x, ",", self.y,")", ", ch = ", self.para.channel, ", sf = ", self.para.sf, ", tp = ", self.para.tp)
         self.gain = 1
         self.energy_profile = energy_profile
         self.base_stations = base_stations
@@ -35,30 +38,41 @@ class Node():
         self.sim_env = sim_env
         self.external = external
 
+        self.adr_ack_limit = adr_ack_limit
+        self.adr_ack_delay = adr_ack_delay
+
+        self.adr_ack_cnt = 0
+
     def run(self):
         while True:
             # added also a random wait to accommodate for any timing issues on the node itself
-            random_wait = np.random.randint(0,  1000)
+            random_wait = np.random.randint(0,  50000)
+            # random_wait = np.random.randint(0,  1000)
             yield self.sim_env.timeout(random_wait)
 
             # ------------SENDING------------ #
-            wake_up_prob = 0.1
+            wake_up_prob = 1
             if self.external:
                 wake_up_prob = self.external.sense(self.x, self.y)
             if np.random.random() < wake_up_prob:
                 self.unique_packet_id += 1
-                packet = UplinkPacket(node=self, id=self.unique_packet_id)
-                print(self.sim_env.now, ": ",  str(packet), " SENDING")
+                adr_req = self.adr_ack_cnt>= self.adr_ack_limit
+                packet = UplinkPacket(node=self, id=self.unique_packet_id, adrAckReq = adr_req)
+                if DEBUG:
+                    print(self.sim_env.now, ": ",  str(packet), " SENDING")
                 self.packet_to_send = packet
                 lost = yield self.sim_env.process(self.send(packet))
                 if lost:
                     lost = yield self.sim_env.process(self.message_lost())
                 if not lost:
-                    print(self.sim_env.now, ": ",  str(packet), " DONE")
+                    if DEBUG:
+                        print(self.sim_env.now, ": ",  str(packet), " DONE")
                     self.num_unique_packets_sent += 1  # at the end to be sure that this packet was tx
-            yield self.sim_env.timeout(600000)
+            #yield self.sim_env.timeout(600000)
 
     def send(self, packet):
+        if DEBUG:
+            print("   ")
         self.current_state = NodeState.TX
         packet.send(self.sim_env.now)
         yield self.sim_env.timeout(int(np.ceil(packet.time_on_air)))
@@ -71,29 +85,80 @@ class Node():
             for bs in packet.collided:
                 if not packet.collided[bs]:
                     self.base_stations[bs].receive_packet(packet)
-            if not any(packet.received.values()):
-                lost = True
+            downlink = self.server.process(packet)
+        else:
+            downlink = None
+            if DEBUG:
+                print(str(packet), " collided.")
         self.current_state = NodeState.RX
         yield self.sim_env.timeout(DLtime)
         self.energy_profile.E_tot -= self.energy_profile.get_E_receive(packet.para.bw, DLtime)
         self.receive_time += DLtime
         self.current_state = NodeState.SLEEP
-        return lost
+        packet.dl = downlink
+        self.ed_adr()
+        if downlink:
+            return False
+        else:
+            return True
 
     def message_lost(self):
         packet = self.packet_to_send
         packet.lost_cnt += 1
         if packet.lost_cnt < MAX_RETRY:
-            random_wait = np.random.randint(0,  1000*(2**packet.lost_cnt))
+            random_wait = np.random.randint(0,  60000)
+            # random_wait = np.random.randint(0,  1000*(2**packet.lost_cnt))
             yield self.sim_env.timeout(random_wait)
-            print(self.sim_env.now, ": ",  str(packet), " RESENDING")
+            if DEBUG:
+                print(self.sim_env.now, ": ",  str(packet), " RESENDING")
             lost = yield self.sim_env.process(self.send(packet))
             if lost:
                 lost = yield self.sim_env.process(self.message_lost())
                 return lost
+            else:
+                return False
         else:
-            print(self.sim_env.now, ": ",  str(packet), " FIELD; reach maximum retries.")
+            if DEBUG:
+                print(self.sim_env.now, ": ",  str(packet), " FIELD; reach maximum retries.")
             return True
+
+    def ed_adr(self):
+        self.adr_ack_cnt += 1
+        if DEBUG:
+            print("ADR_ACK_CNT = ", self.adr_ack_cnt)
+        if self.packet_to_send.dl:
+            if DEBUG:
+                print("Downlink Received. ADR_ACK_CNT cleared.")
+            self.adr_ack_cnt = 0
+            if self.packet_to_send.dl.adr_para:
+                self.para.sf = self.packet_to_send.dl.adr_para['sf']
+                self.para.tp = self.packet_to_send.dl.adr_para['tp']
+                if DEBUG:
+                    print("=============== ADR update ===============")
+                    print("ADR Received with sf = {}, tp = {}".format(self.para.sf, self.para.tp))
+            return
+        sf = self.para.sf
+        tp = self.para.tp
+        if self.adr_ack_cnt >= self.adr_ack_limit:
+            if sf >= max(LoRaParameters.SPREADING_FACTORS) and tp >= max(LoRaParameters.TP_DBM):
+                self.para.sf = max(LoRaParameters.SPREADING_FACTORS)
+                self.para.tp = max(LoRaParameters.TP_DBM)
+                self.adr_ack_cnt = 0
+                if DEBUG:
+                    print("ADR improvement not possible. ADR_ACK_CNT cleared.")
+                return
+
+            if self.adr_ack_cnt == self.adr_ack_limit + self.adr_ack_delay:
+                if tp < max(LoRaParameters.TP_DBM):
+                    self.para.tp += 3
+                else:
+                    self.para.sf += 1
+                self.adr_ack_cnt = self.adr_ack_limit
+                if DEBUG:
+                    print("=============== ADR update ===============")
+                    print("ED ADR: sf = {}, tp = {}".format(self.para.sf, self.para.tp))
+        return
+
 
     def __str__(self):
         return "Node {}".format(self.id)
@@ -105,7 +170,7 @@ class EnergyProfile:
     tx_power_mA = [22, 22, 22, 23,                                      # RFO/PA0: -2..1
           24, 24, 24, 25, 25, 25, 25, 26, 31, 32, 34, 35, 44,  # PA_BOOST/PA1: 2..14
           82, 85, 90,                                          # PA_BOOST/PA1: 15..17
-          105, 115, 125]                                       # PA_BOOST/PA1+PA2: 18..20
+          105, 115, 125, 135]                                       # PA_BOOST/PA1+PA2: 18..20
     tx_power_cof_k = 0.6
     tx_power_cof_b = 17
     def __init__(self, proc_power, Vdd = 3.3,  E_tot = BATTERY_ENERGY):
@@ -119,7 +184,7 @@ class EnergyProfile:
 
     def get_E_transmit(self, tp_dbm, t):
         # return (10**(tp_dbm/10.0) * tx_power_cof_k + tx_power_cof_b) *  self.Vdd * t
-        return EnergyProfile.tx_power_mA[range(-2,21).index(tp_dbm)]*  self.Vdd * t/1000
+        return EnergyProfile.tx_power_mA[range(-2,22).index(tp_dbm)]*  self.Vdd * t/1000
 
     def get_E_receive (self, bw, t):
         return EnergyProfile.rx_power_mA[[125,250,500].index(bw)] * self.Vdd * t/1000
@@ -139,7 +204,7 @@ def time_on_air(sf, bw, cr,  h, de, pl):
     return Tpream + Tpayload # msec
 
 class UplinkPacket():
-    def __init__(self, node: Node,  id):
+    def __init__(self, node: Node,  id, adr = True, adrAckReq = False):
         self.id = id
         self.node = node
         self.para = node.para
@@ -153,7 +218,10 @@ class UplinkPacket():
         self.end_at = None
         self.time_on_air = None
         self.lost_cnt = 0
+        self.adr = adr
+        self.adrAckReq = adrAckReq
         self.transmissionInterface = node.air_interface
+        self.dl = None
 
     def airtime(self): #in ms
         if self.time_on_air is None:

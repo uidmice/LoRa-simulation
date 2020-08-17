@@ -8,7 +8,7 @@ from LoRaParameters import LoRaParameters
 
 class PropagationModel:
     #log distance path loss model (or log normal shadowing)
-    def __init__(self, gamma=2.32, d0=1000.0, std=7.8, Lpld0=128.95, GL=0):
+    def __init__(self, gamma=2.32, d0=1000.0, std=0.5, Lpld0=128.95, GL=0):
         self.gamma = gamma
         self.d0 = d0
         self.std = std
@@ -29,9 +29,9 @@ class PropagationModel:
 
 class SNRModel:
     def __init__(self):
-        self.noise = -80  # mean_mean_values
-        self.std_noise = 6  # mean_std_values
-        self.noise_floor = -174 + 10 * np.log10(125e3)
+        self.noise = -2  # mean_mean_values
+        self.std_noise = 1  # mean_std_values
+        self.noise_floor = -174 + 10 * np.log10(125e3)+np.random.normal(self.noise, self.std_noise)
 
     def rss_to_snr(self, rss: float):
         return rss - self.noise_floor
@@ -68,7 +68,7 @@ class AirInterface:
             self.packets_in_air[ch].append(p)
 
     def collision(self, packet):
-        threshold = 6
+        threshold = 10
         ch = packet.para.channel
         with self.sems[ch].request() as req:
             for bs in packet.rss:
