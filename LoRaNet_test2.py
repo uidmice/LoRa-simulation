@@ -34,25 +34,6 @@ nodes = []
 gateways = []
 
 
-
-# n_loc = np.loadtxt('deployment.dat')
-# x_min = np.min(n_loc[:,0])
-# x_max = np.max(n_loc[:,0])
-# y_min = np.min(n_loc[:,1])
-# y_max = np.max(n_loc[:,1])
-
-# for i in range(len(n_loc)):
-#     node = Node(i, EnergyProfile(3.3), LoRaParameters(i%Gateway.NO_CHANNELS, sf = i%Gateway.NO_CHANNELS+7), n_loc[i,0],
-#      n_loc[i,1],gateways, 10, air, sim_env )
-#     nodes.append(node)
-#     sim_env.process(node.run()) #10% chance of sending a packet
-
-
-
-
-
-# input('Press Enter to continue ...')
-
 sim_env = simpy.Environment()
 air = AirInterface(sim_env)
 gateways.append(Gateway(0, 0, 0,  sim_env))

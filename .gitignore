@@ -131,3 +131,6 @@ dmypy.json
 
 *.DS_Store
 .idea/
+
+*.mp4
+*.npy

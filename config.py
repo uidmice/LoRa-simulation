@@ -12,15 +12,15 @@ CodingRate = 1
 
 
 graphics = 1
-DEBUG = 1
+DEBUG = 0
 
 DLtime = 1000 # msec
 MAX_RETRY = 20
 
-MAX_DISTANCE = 5000 # 5 km
-GRID = 100 #100m
+MAX_DISTANCE = 1500 # 5 km
+GRID = 50 #100m
 CORD = int(MAX_DISTANCE/GRID)
 
 MINUTE_TO_MS = 60000 # minute to ms
-UPDATA_RATE = 60000 #update external environment every 1 minute
+UPDATA_RATE = 60 #update external environment every 1 minute
 BATTERY_ENERGY = 22572000 # 3.3V 1900 mAh battery
