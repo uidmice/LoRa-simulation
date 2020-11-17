@@ -1,7 +1,5 @@
 import math
-import numpy as np
 import enum
-import simpy
 
 from config import *
 from .TransmissionInterface import AirInterface
@@ -14,39 +12,41 @@ class NodeStates(enum.Enum):
     SLEEPING = 4
 
 
-class NodeStatus:
-    def __init__(self, node_id):
-        self.node_id = node_id
+class Node:
+    STATE_KEYWORDS = ["location", "failure_rate", "last_update", "current_sensing",
+                      "num_unique_packets_received", "num_total_packets_sent", "total_transmit_time",
+                      "total_receive_time", "total_energy_usage"]
+    STATE_KEYS = []
+
+    def __init__(self, node_id, energy_profile, lora_para: LoRaParameters,
+                 air_interface: AirInterface, sim_env, location, adr,
+                 adr_ack_limit=10, adr_ack_delay=5):
+        self.id = node_id
+        self.para = lora_para
+        self.energy_profile = energy_profile
+        self.payload_size = 10
+        self._air_interface = air_interface
+        self.sim_env = sim_env
+        self.adr = adr
+        self.packet_to_send = None
+
+        self.location = location
         self.state = NodeStates.SLEEPING
 
-        self.unique_packet_id = 0  # unique packets not counting for multiple tries
-        self.unique_packet_sent = []  # unique packets sent successfully received
+        self._unique_packet_id = 0  # unique packets not counting for multiple tries
+        self.unique_packet_received_successfully = []  # unique packets sent successfully received
         self.num_packets_sent = 0  # total number of packets sent
 
         self.transmit_time = {}
         self.receive_time = {}
-        self.success_rate_history = {}
         self.sensed_history = {}
+        self.last_payload_sent = 0
+        self.latest_sensed = 0
 
-
-class Node:
-    def __init__(self, node_id, energy_profile, lora_para: LoRaParameters, x, y,
-                 air_interface: AirInterface, sim_env, status: NodeStatus, adr,
-                 adr_ack_limit=10, adr_ack_delay=5):
-        self.id = node_id
-        self.para = lora_para
-        self.x = x
-        self.y = y
         if DEBUG:
-            print('node %d' % node_id, "  @  (", self.x, ",", self.y, ")", ", ch = ", self.para.channel, ", sf = ",
+            print('node %d' % node_id, "  @  (", self.location.x, ",", self.location.y, ")", ", ch = ",
+                  self.para.channel, ", sf = ",
                   self.para.sf, ", tp = ", self.para.tp)
-        self.energy_profile = energy_profile
-        self.payload_size = 10
-        self.air_interface = air_interface
-        self.sim_env = sim_env
-        self.status = status
-        self.adr = adr
-        self.packet_to_send = None
 
         if adr:
             self.adr_ack_limit = adr_ack_limit
@@ -56,109 +56,58 @@ class Node:
     def __str__(self):
         return "Node {}".format(self.id)
 
-    # def run(self, time = 1000, threshold = 45):
-    # while not time:
-    #     yield self.sim_env.timeout(np.random.randint(10000))
-    #
-    #     # ------------SENDING------------ #
-    #     phys_sense = 50
-    #     if self.external:
-    #         phys_sense = self.external.sense(self.x, self.y)
-    #     if phys_sense > threshold:
-    #         self.unique_packet_id += 1
-    #         adr_req = self.adr_ack_cnt>= self.adr_ack_limit
-    #         packet = UplinkPacket(node=self, payload = phys_sense, id=self.unique_packet_id, adrAckReq = adr_req)
-    #         if DEBUG:
-    #             print(self.sim_env.now, ": ",  str(packet), " SENDING")
-    #         self.packet_to_send = packet
-    #         lost = yield self.sim_env.process(self.send(packet))
-    #         if lost:
-    #             lost = yield self.sim_env.process(self.message_lost())
-    #         if not lost:
-    #             if DEBUG:
-    #                 print(self.sim_env.now, ": ",  str(packet), " DONE")
-    #             self.num_unique_packets_sent += 1  # at the end to be sure that this packet was tx
-    #         self.status[self.id] = 0
+    def get_status(self, *args, **kwargs):
+        s = type('Status', (object,), {})()
+        for arg in args:
+            assert arg in Node.STATE_KEYWORDS
+            if arg == "location":
+                s.location = self.location
+            elif arg == "failure_rate":
+                s.failure_rate = self.failure_rate()
+            elif arg == "last_update":
+                s.last_update = self.last_payload_sent
+            elif arg == "current_sensing":
+                s.current_sensing = self.latest_sensed
+            elif arg == "num_unique_packets_received":
+                s.num_unique_packets_received = len(self.unique_packet_received_successfully)
+            elif arg == "num_total_packets_sent":
+                s.num_total_packets_sent = self.num_packets_sent
+            elif arg == "total_transmit_time":
+                s.total_transmit_time = sum(self.transmit_time.values())
+            elif arg == "total_receive_time":
+                s.total_receive_time = sum(self.receive_time.values())
+            elif arg == "total_energy_usage":
+                s.total_energy_usage = self.energy_profile.usage
+            else:
+                assert False
 
-    # while True:
-    #     random_wait = np.random.randint(time/2)
-    #     yield self.sim_env.timeout(random_wait)
-    #
-    #     # ------------SENDING------------ #
-    #     phys_sense = 50
-    #     if self.external:
-    #         phys_sense = self.external.sense(self.x, self.y)
-    #     if phys_sense > threshold:
-    #         self.unique_packet_id += 1
-    #         packet = UplinkPacket(node=self, payload = phys_sense, id=self.unique_packet_id, adrAckReq = False)
-    #         if DEBUG:
-    #             print(self.sim_env.now, ": ",  str(packet), " SENDING")
-    #         self.packet_to_send = packet
-    #         lost = yield self.sim_env.process(self.send(packet))
-    #         if not lost:
-    #             if DEBUG:
-    #                 print(self.sim_env.now, ": ",  str(packet), " DONE")
-    #             self.num_unique_packets_sent += 1  # at the end to be sure that this packet was tx
-    #             self.last_payload = phys_sense
-    #     self.success_history.append(self.success_rate())
-    #     self.true_history.append(phys_sense)
-    #     if self.last_payload:
-    #         self.value_history.append(self.last_payload)
-    #     else:
-    #         self.value_history.append(0)
-    #     now = self.sim_env.now
-    #     now = now % time
-    #     yield self.sim_env.timeout(time - now)
+        for key, value in kwargs:
+            assert key in Node.STATE_KEYS
 
-    # while True:
-    #     random_wait = np.random.randint(time/2)
-    #     yield self.sim_env.timeout(random_wait)
-    #
-    #     # ------------SENDING------------ #
-    #     phys_sense = 50
-    #     if self.external:
-    #         phys_sense = self.external.sense(self.x, self.y)
-    #     if not self.last_payload:
-    #         self.last_payload = 0
-    #     diff = np.absolute(self.last_payload - phys_sense)
-    #     if diff > threshold:
-    #         self.unique_packet_id += 1
-    #         packet = UplinkPacket(node=self, payload = phys_sense, id=self.unique_packet_id, adrAckReq = False)
-    #         if DEBUG:
-    #             print(self.sim_env.now, ": ",  str(packet), " SENDING")
-    #         self.packet_to_send = packet
-    #         lost = yield self.sim_env.process(self.send(packet))
-    #         if not lost:
-    #             if DEBUG:
-    #                 print(self.sim_env.now, ": ",  str(packet), " DONE")
-    #             self.num_unique_packets_sent += 1  # at the end to be sure that this packet was tx
-    #             self.last_payload = phys_sense
-    #     self.success_history.append(self.success_rate())
-    #     self.true_history.append(phys_sense)
-    #     if self.last_payload:
-    #         self.value_history.append(self.last_payload)
-    #     else:
-    #         self.value_history.append(0)
-    #     now = self.sim_env.now
-    #     now = now % time
-    #     yield self.sim_env.timeout(time - now)
+        return s
+
+    def create_unique_packet(self, payload, adr=True, adrAckReq=False):
+        packet = UplinkPacket(self, self._unique_packet_id, payload, adr, adrAckReq)
+        self._unique_packet_id += 1
+        return packet
 
     def send(self, packet):
         self.packet_to_send = packet
-        self.status.num_packets_sent += 1
-        self.status.state = NodeStates.SENDING_NO_COLLISION
+        self.num_packets_sent += 1
+        self.state = NodeStates.SENDING_NO_COLLISION
         yield self.sim_env.process(packet.schedule())
 
         # not accounting energy cost to run on-device algorithm
-        self.energy_profile.E_tot -= self.energy_profile.transmit_energy_cost(packet.para.tp, packet.time_on_air)
-        self.status.transmit_time[self.sim_env.now] = packet.time_on_air
+        self.energy_profile.usage += self.energy_profile.transmit_energy_cost(packet.para.tp, packet.time_on_air)
+        self.transmit_time[self.sim_env.now] = packet.time_on_air
         yield packet.receive
+
         if packet.received:
-            self.status.unique_packet_sent.append(packet.id)
+            self.unique_packet_received_successfully.append(packet.id)
+            self.last_payload_sent = self.latest_sensed
         if self.adr:
             self.ed_adr()
-        self.status.state = NodeStates.SLEEPING
-
+        self.state = NodeStates.SLEEPING
 
     def ed_adr(self):
         self.adr_ack_cnt += 1
@@ -197,15 +146,22 @@ class Node:
                     print("ED ADR: sf = {}, tp = {}".format(self.para.sf, self.para.tp))
         return
 
-    def success_rate(self):
-        if self.status.unique_packet_id == 0:
+    def failure_rate(self):
+        if self._unique_packet_id == 0:
             return 0
-        return len(self.status.unique_packet_sent) / float(self.status.unique_packet_id)
+        return 1 - len(self.unique_packet_received_successfully)/ float(self.num_packets_sent)
 
-    def sense(self, external):
-        value = external.sense(self.x, self.y)
-        packet = UplinkPacket(self, payload=value)
-        return packet
+
+    def sense(self, environment):
+        value = environment.sense(self.location)
+        self.sensed_history[self.sim_env.now] = value
+        self.latest_sensed = value
+        return value
+
+    @property
+    def air_interface(self):
+        return self._air_interface
+
 
 class EnergyProfile:
     rx_power_mA = [10.3, 11.1, 12.6]
@@ -216,11 +172,11 @@ class EnergyProfile:
                    82, 85, 90,  # PA_BOOST/PA1: 15..17
                    105, 115, 125, 135]  # PA_BOOST/PA1+PA2: 18..20
 
-    def __init__(self, proc_power, Vdd=3.3, E_tot=BATTERY_ENERGY):
+    def __init__(self, proc_power=0.1, Vdd=3.3, E_tot=BATTERY_ENERGY):
         self.proc_power_mW = proc_power
         self.Vdd = Vdd
         self.origin_E_tot = E_tot
-        self.E_tot = E_tot
+        self.usage = 0
 
     def compute_energy_cost(self, t):
         return self.proc_power_mW * t / 1000
@@ -248,9 +204,8 @@ def airtime(sf, bw, cr, h, de, pl):
 
 
 class UplinkPacket():
-    def __init__(self, node: Node, payload=0, adr=True, adrAckReq=False):
-        self.id = node.status.unique_packet_id
-        node.status.unique_packet_id += 1
+    def __init__(self, node: Node, id, payload=0, adr=True, adrAckReq=False):
+        self.id = node.id
         self.node = node
         self.para = node.para
         self.payload = payload
@@ -262,17 +217,15 @@ class UplinkPacket():
         self.received = False
         self.adr = adr
         self.adrAckReq = adrAckReq
-        self.air_interface = node.air_interface
 
         self.transmission = None
         self.dl = None
         self.receive = None
 
     def airtime(self):  # in ms
-        print("Calculating airtime")
         if self.time_on_air is None:
             self.time_on_air = airtime(self.para.sf, self.para.bw, self.para.cr, self.para.h, self.para.de,
-                                           self.payload_size)
+                                       self.payload_size)
         return self.time_on_air
 
     def change_freq_to(self, freq):
@@ -291,18 +244,17 @@ class UplinkPacket():
         assert t >= 0
         self.start_at = t + self.node.sim_env.now
         self.end_at = self.start_at + self.airtime()
-        self.node.status.num_packets_sent += 1
         if t > 0:
             yield self.node.sim_env.timeout(t)
         self.transmission = self.node.sim_env.process(self.send())
         yield self.transmission
 
     def send(self):
-        print(str(self.node.sim_env.now) + ": "+str(self) + " is being sent\t TOA: "+ str(self.time_on_air) + " ms")
-        self.air_interface.transmit(self)
+        if DEBUG:
+            print(str(self.node.sim_env.now) + ": " + str(self) + " is being sent\t TOA: " + str(self.time_on_air) + " ms")
+        self.node.air_interface.transmit(self)
         self.receive = self.node.sim_env.event()
         yield self.node.sim_env.timeout(self.time_on_air)
-
 
     def __str__(self):
         return "Packet #{} from Node {}".format(self.id, self.node.id)

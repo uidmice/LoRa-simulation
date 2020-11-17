@@ -12,7 +12,7 @@ from framework.Node import Node, EnergyProfile
 from framework.Gateway import Gateway
 from framework.TransmissionInterface import AirInterface
 from framework.LoRaParameters import LoRaParameters
-from framework.External import *
+from framework.Environment import *
 from framework.Server import Server
 from config import *
 
@@ -28,7 +28,7 @@ ax = fig.add_subplot(1,1,1)
 
 sim_env = simpy.Environment()
 air = AirInterface(sim_env)
-external = TempExternal(sim_env)
+external = TempEnvironment(sim_env)
 gateways.append(Gateway(0, 0, 0,  sim_env))
 server = Server()
 im = ax.imshow(external.T, alpha=.5, interpolation='bicubic', cmap='RdYlGn_r', origin='lower'
@@ -92,7 +92,7 @@ sim_env.run(sim_time*MINUTE_TO_MS)
 received = [x.num_unique_packets_sent for x in nodes]
 sent = [x.num_packets_sent for x in nodes]
 time = [x.transmit_time for x in nodes]
-energy_usage = [x.energy_profile.origin_E_tot - x.energy_profile.E_tot for x in nodes]
+energy_usage = [x.energy_profile.origin_E_tot - x.energy_profile.usage for x in nodes]
 
 num_nodes = len(nodes)
 print('Of ', num_nodes, " nodes:")

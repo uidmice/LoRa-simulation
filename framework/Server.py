@@ -67,10 +67,11 @@ class Server:
         else:
             p.lost_cnt += 1
         if any([a==PacketStatus.COLLIDED for a in info.status.values()]):
-            p.node.status.state = NodeStates.SENDING_COLLISION
+            p.node.state = NodeStates.SENDING_COLLISION
         if p.adr:
-            self.adr_process(info, p, dl)
+            dl = self.adr_process(info, p, dl)
         yield self.sim_env.timeout(np.random.randint(2000))  # randomly wait for 0~2s for the downlink
+        p.dl = dl
         p.receive.succeed()
 
     def adr_process(self, packet_info: PacketInformation,packet, dl):
@@ -102,4 +103,4 @@ class Server:
                     dl.adr_para = self.adr_for_node[packet.node.id]
             if packet.adrAckReq:
                 dl.adr_para = self.adr_for_node[packet.node.id]
-        packet.dl = dl
+        return dl

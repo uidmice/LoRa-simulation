@@ -1,6 +1,5 @@
 import numpy as np
 import enum
-import simpy
 
 from config import *
 
@@ -38,10 +37,9 @@ class Gateway:
     SNR_THRESHOLD = 5
     NO_CHANNELS = 8
 
-    def __init__(self, id, x, y, sim_env):
+    def __init__(self, id, location, sim_env):
         self.id = id
-        self.x = x
-        self.y = y
+        self.location = location
         self.channels = range(Gateway.NO_CHANNELS) #only listen to channel 0-7
         self.sim_env = sim_env
         self.num_of_packet_received = 0
@@ -49,10 +47,9 @@ class Gateway:
         self.record = []
 
         if DEBUG:
-            print('gateway %d' %id, "  @  (", self.x, ",", self.y,") on Chennels ", str(self.channels))
+            print('gateway %d' %id, "  @  (", self.location.x, ",", self.location.y,") on Channels ", str(self.channels))
 
     def listen(self, re: PacketRecord):
-        print("Gateway " +str(self.id)+ " is listening")
         if re.parameter.channel not in self.channels:
             re.status = PacketStatus.NOT_LISTEN   # Not listening to the channel
             re.dispatch.succeed(value={self.id: re})

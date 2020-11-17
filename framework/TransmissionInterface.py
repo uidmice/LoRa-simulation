@@ -3,6 +3,18 @@ import numpy as np
 from .LoRaParameters import LoRaParameters
 from .Gateway import PacketRecord
 
+
+class Location:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+    def distance(self, other):
+        dx = self.x - other.x
+        dy = self.y - other.y
+        return np.sqrt(dx*dx + dy*dy)
+
+
 class PropagationModel:
     # log distance path loss model (or log normal shadowing)
     def __init__(self, gamma=2.32, d0=1000.0, std=0.5, Lpld0=128.95, GL=0):
@@ -52,7 +64,7 @@ class AirInterface:
 
         for i in range(len(self.gateways)):
             gateway = self.gateways[i]
-            dist = np.sqrt((p.node.x - gateway.x) ** 2 + (p.node.y - gateway.y) ** 2)
+            dist = p.node.location.distance(gateway.location)
             rss = self.prop_model.tp_to_rss(False, p.para.tp, dist)
             snr = self.snr_model.rss_to_snr(rss)
             record = PacketRecord(p, gateway, rss, snr, dispatch[i])

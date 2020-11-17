@@ -1,5 +1,4 @@
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.animation as animation
 from scipy import interpolate
 import numpy as np
@@ -9,7 +8,7 @@ dT = 5000
 deltaT = 5
 
 inp = False
-cor = np.load('coordinate.npy')
+cor = np.load('framework/coordinate.npy')
 
 for t in thr:
 
@@ -42,12 +41,6 @@ for t in thr:
         z1 = np.zeros((frn, len(X_s), len(X_s)))
         z2 = np.zeros((frn, len(X_s), len(X_s)))
         for i in range(frn):
-            # Z1 = np.reshape(Srate[:,i], (N,N))
-            # Z2 = np.reshape(Trate[:,i], (N,N))
-            # f1 = interpolate.interp2d(X, Y, Z1)
-            # f2 = interpolate.interp2d(X, Y, Z2)
-            # z1[i,:,:] = f1(X_s, X_s)
-            # z2[i,:,:] = f2(X_s, X_s)
             xi = np.zeros((len(X_s)*len(X_s), 2))
             xi[:,0] = x.flatten()
             xi[:,1] = y.flatten()

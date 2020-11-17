@@ -1,39 +1,31 @@
 from framework.Node import *
 from framework.Gateway import Gateway
-from framework.TransmissionInterface import AirInterface
+from framework.TransmissionInterface import AirInterface, Location
 from framework.Server import Server, Application
 from framework.LoRaParameters import LoRaParameters
-from framework.External import TempExternal
-from config import *
-nodes = []
-gateways = []
+from framework.Environment import TempEnvironment
+import matplotlib.pyplot as plt
+import simpy
 
+MAX_DISTANCE = 2000
 sim_env = simpy.Environment()
-external = TempExternal(sim_env)
-gateways.append(Gateway(0, 500, 0,  sim_env))
-gateways.append(Gateway(1, -500, 0,  sim_env))
-server = Server(gateways, sim_env, Application())
-air_interface = AirInterface(sim_env, gateways, server)
+environment = TempEnvironment(sim_env,  Location(MAX_DISTANCE, -MAX_DISTANCE), Location(-MAX_DISTANCE, MAX_DISTANCE), 296.15, dx = 50)
 
-def node_send(node: Node, t):
-    for i in range(50):
-        yield sim_env.timeout(np.random.randint(t/2))
-        packet = UplinkPacket(node, np.random.randint(50), adr=True, adrAckReq=True)
-        yield sim_env.process(node.send(packet))
-        yield sim_env.timeout(t * (i+1)-sim_env.now)
-
-
-n_id = 0
-for i in range(-CORD+5,CORD+1,10):
-    for j in range(-CORD+5,CORD+1,10):
-        x = j * GRID
-        y = i * GRID
-        node = Node(n_id, EnergyProfile(3.3), LoRaParameters(i%Gateway.NO_CHANNELS, sf = 12), x,
-              y, air_interface, sim_env, NodeStatus(n_id), True)
-        nodes.append(node)
-        sim_env.process(node_send(node, 6000))
-        n_id += 1
-
-
-
-sim_env.run()
+plt.ion()
+fig = plt.figure(figsize=(10,10))
+ax = fig.add_subplot(1,1,1)
+im = ax.imshow(environment.T, alpha=.5, interpolation='bicubic', cmap='RdYlGn_r', origin='lower'
+,extent=[-MAX_DISTANCE, MAX_DISTANCE, - MAX_DISTANCE, MAX_DISTANCE]
+)
+ax.axes.xaxis.set_visible(False)
+ax.axes.yaxis.set_visible(False)
+plt.colorbar(im)
+im.set_clim(353, 293)
+plt.axis('off')
+plt.draw()
+plt.show()
+contour_ax = fig.add_axes(ax.get_position(), frameon=False)
+contour_ax.set_xlim([-MAX_DISTANCE, MAX_DISTANCE])
+contour_ax.set_ylim([-MAX_DISTANCE, MAX_DISTANCE])
+sim_env.process(environment.update( update_rate=60, im = im, ax = contour_ax))
+sim_env.run(5*MINUTE_TO_MS)
