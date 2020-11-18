@@ -18,7 +18,7 @@ DLtime = 1000 # msec
 MAX_RETRY = 20
 
 MAX_DISTANCE = 1500 # 5 km
-GRID = 50 #100m
+GRID = 50 #m
 CORD = int(MAX_DISTANCE/GRID)
 
 MINUTE_TO_MS = 60000 # minute to ms

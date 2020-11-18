@@ -42,6 +42,7 @@ class Node:
         self.sensed_history = {}
         self.last_payload_sent = 0
         self.latest_sensed = 0
+        self.last_payload_change = 0
 
         if DEBUG:
             print('node %d' % node_id, "  @  (", self.location.x, ",", self.location.y, ")", ", ch = ",
@@ -59,7 +60,7 @@ class Node:
     def get_status(self, *args, **kwargs):
         s = type('Status', (object,), {})()
         for arg in args:
-            assert arg in Node.STATE_KEYWORDS
+            assert arg in Node.STATE_KEYWORDS, "%s not a valid keyword"
             if arg == "location":
                 s.location = self.location
             elif arg == "failure_rate":
@@ -79,7 +80,7 @@ class Node:
             elif arg == "total_energy_usage":
                 s.total_energy_usage = self.energy_profile.usage
             else:
-                assert False
+                assert False, "%s is not defined"
 
         for key, value in kwargs:
             assert key in Node.STATE_KEYS
@@ -104,7 +105,10 @@ class Node:
 
         if packet.received:
             self.unique_packet_received_successfully.append(packet.id)
+            self.last_payload_change = self.latest_sensed - self.last_payload_sent
             self.last_payload_sent = self.latest_sensed
+        else:
+            self.last_payload_change = 0
         if self.adr:
             self.ed_adr()
         self.state = NodeStates.SLEEPING

@@ -1,6 +1,5 @@
 import numpy as np
 
-from .LoRaParameters import LoRaParameters
 from .Gateway import PacketRecord
 
 
