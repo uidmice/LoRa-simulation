@@ -1,12 +1,11 @@
 import simpy
-import matplotlib.animation as animation
-from scipy import interpolate
 import numpy as np
 
+from framework.utils import Location
 from framework.Node import Node, EnergyProfile
 from framework.Gateway import Gateway
-from framework.TransmissionInterface import AirInterface, Location
-from framework.Server import Server, Application
+from framework.TransmissionInterface import AirInterface
+from framework.Backend import Server, Application
 from framework.LoRaParameters import LoRaParameters
 from framework.Environment import *
 
@@ -39,16 +38,6 @@ class Simulation:
         for i in range(len(gateway_positions)):
             self.gateways.append(Gateway(i, gateway_positions[i], self.sim_env))
 
-        # states:
-        self.num_packet_sent_given_nearby = {}
-        self.num_packet_sent_suc_given_nearby = {}
-        for i in [a.id for a in self.nodes]:
-            self.num_packet_sent_given_nearby[i] = {}
-            self.num_packet_sent_suc_given_nearby[i] = {}
-            for j in range(30):
-                self.num_packet_sent_given_nearby[i][j] = 2
-                self.num_packet_sent_suc_given_nearby[i][j] = 2
-
     def node_states(self, *args, **kwargs):
         return list(a.get_status(*args, **kwargs) for a in self.nodes)
 
@@ -58,15 +47,18 @@ class Simulation:
         self.steps += 1
         send_index = [idx for idx, send in enumerate(actions) if send]
         for i in range(len(self.nodes)):
-            self.sim_env.process(self._node_send(i, actions[i]))
+            self.sim_env.process(self._node_send_sensed_value(i, actions[i]))
         self.sim_env.run(self.step_time * self.steps)
         reward = 0
+        received = 0
         for i in send_index:
-            if self.nodes[i].packet_to_send.received and self.nodes[i].last_payload_change:
-                reward += np.exp(-20/np.absolute(self.nodes[i].last_payload_change))
-        return reward
+            if self.nodes[i].packet_to_send.received:
+                received += 1
+                if self.nodes[i].last_payload_change:
+                    reward += np.exp(-20/np.absolute(self.nodes[i].last_payload_change))
+        return reward, 1 - received/(len(send_index)*1.0)
 
-    def _node_send(self, node_index, send):
+    def _node_send_sensed_value(self, node_index, send):
         yield self.sim_env.timeout(np.random.randint(self.offset))
         node = self.nodes[node_index]
         value = node.sense(self.environment)
@@ -75,70 +67,43 @@ class Simulation:
             yield self.sim_env.process(node.send(packet))
         yield self.sim_env.timeout(self.step_time * self.steps - self.sim_env.now)
 
-class PerformanceAnimation:
-    def __init__(self, node_location: list, gateway_location: list, performance: dict, step_size,fps=10):
-        self.gateway_location = gateway_location
-        self.x = list(n.x for n in node_location)
-        self.y = list(n.y for n in node_location)
-        self.step_size = step_size
-        self.fps = fps
-        self.info_fresh = performance["info_fresh"]
-        self.success_rate = performance["success_rate"]
-        assert self.info_fresh.shape[0] == self.success_rate.shape[0]
-        self.frn = self.info_fresh.shape[0]
-        Writer = animation.writers['ffmpeg']
-        self.writer = Writer(fps=fps, metadata=dict(artist='Me'), bitrate=1800)
+    def _node_send_test(self, node_index):
+        yield self.sim_env.timeout(np.random.randint(self.offset))
+        node = self.nodes[node_index]
+        packet = node.create_unique_packet(0, True, True)
+        yield self.sim_env.process(node.send(packet))
+        yield self.sim_env.timeout(self.step_time * self.steps - self.sim_env.now)
 
-    def _update_plot(self, frame_number, ax1, ax2, time_label):
-        ax1.clear()
-        ax2.clear()
-        ax1.set_title("Success rate")
-        ax2.set_title(r"$\exp{-|dT|/10}}$")
+    def pre_adr(self, rounds: int, show=False):
+        assert rounds > 100
+        per = np.zeros((len(self.nodes), rounds))
+        for i in range(len(self.nodes)):
+            self.nodes[i].adr = True
 
-        ax1.scatter3D(self.x, self.y, self.success_rate[frame_number, :],  cmap="winter_r", c = self.success_rate[frame_number, :], vmin=0, vmax=2)
-        ax2.scatter3D(self.x, self.y, self.info_fresh[frame_number, :],  cmap="winter_r", c = self.info_fresh[frame_number, :], vmin=0, vmax=2)
-        ax1.set_zlim(0,1.1)
-        ax2.set_zlim(0,1.1)
-        time_label.set_text(str(frame_number * self.step_size/1000) + "s")
+        for i in range(rounds):
+            assert self.sim_env.now == self.steps * self.step_time
+            self.steps += 1
+            for j in range(len(self.nodes)):
+                self.sim_env.process(self._node_send_test(j))
+            self.sim_env.run(self.step_time * self.steps)
+            for j in range(len(self.nodes)):
+                per[j, i] = self.nodes[j].moving_average_per()
+        if show:
+            plt.figure(figsize=(5,5))
+            plt.plot(np.mean(per, axis=0))
+            plt.title("Running ADR...")
+            plt.xlabel("iterations")
+            plt.ylabel("Packet error rate")
+        return per
 
-
-
-    def play(self):
-        figure = plt.figure(0, figsize=(18, 9))
-        ax1 = figure.add_subplot(1, 2, 1, projection='3d')
-        ax2 = figure.add_subplot(1, 2, 2, projection='3d')
-        textax = figure.add_axes([0.0, 0.95, 0.1, 0.05])
-        textax.axis("off")
-        time_label = textax.text(0.5, 0.5, "0s", ha="left", va="top")
-        ax1.set_title("Success rate")
-        ax2.set_title(r"$\exp{-|dT|/20}}$")
-        ax1.scatter3D(self.x, self.y, self.success_rate[0, :], cmap="winter_r",
-                           c=self.success_rate[0, :], vmin=0, vmax=2)
-        ax2.scatter3D(self.x, self.y, self.info_fresh[0, :], cmap="winter_r",
-                           c=self.info_fresh[0, :], vmin=0, vmax=2)
-        ax1.set_zlim(0, 1.1)
-        ax2.set_zlim(0, 1.1)
-        plt.tight_layout()
-        animation.FuncAnimation(figure, self._update_plot, self.frn, fargs=(ax1, ax2, time_label),interval=2000/self.fps)
-        plt.figure(0)
-        plt.show()
-
-    def save(self, title):
-        figure = plt.figure(0, figsize=(18, 9))
-        ax1 = figure.add_subplot(1, 2, 1, projection='3d')
-        ax2 = figure.add_subplot(1, 2, 2, projection='3d')
-        textax = figure.add_axes([0.0, 0.95, 0.1, 0.05])
-        textax.axis("off")
-        time_label = textax.text(0.5, 0.5, "0s", ha="left", va="top")
-        ax1.set_title("Success rate")
-        ax2.set_title(r"$\exp{-|dT|/10}}$")
-        ax1.scatter3D(self.x, self.y, self.success_rate[0, :], cmap="winter_r",
-                      c=self.success_rate[0, :], vmin=0, vmax=2)
-        ax2.scatter3D(self.x, self.y, self.info_fresh[0, :], cmap="winter_r",
-                      c=self.info_fresh[0, :], vmin=0, vmax=2)
-        ax1.set_zlim(0, 1.1)
-        ax2.set_zlim(0, 1.1)
-        plt.tight_layout()
-        ani = animation.FuncAnimation(figure, self._update_plot, self.frn, fargs=(ax1, ax2, time_label),
-                                interval=2000 / self.fps)
-        ani.save(title, writer = self.writer)
+    def reset(self):
+        self.sim_env = simpy.Environment()
+        self.steps = 0
+        self.environment.reset(self.sim_env)
+        self.sim_env.process(self.environment.update(UPDATA_RATE))
+        for i in range(len(self.nodes)):
+            self.nodes[i].reset(self.sim_env)
+        for i in range(len(self.gateways)):
+            self.gateways[i].reset(self.sim_env)
+        self.server.reset(self.sim_env)
+        self.air_interface.reset(self.sim_env)

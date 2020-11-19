@@ -1,9 +1,11 @@
 import numpy as np
+from config import *
+from collections import deque
+
 from .Gateway import DownlinkPacket, PacketStatus, Gateway
 from .LoRaParameters import LoRaParameters
 from .Node import NodeStates
-from config import *
-from collections import deque
+from .utils import PacketInformation
 
 class Application:
     def __init__(self):
@@ -12,14 +14,9 @@ class Application:
     def run(self, info):
         self.data[info.node_id] = [].append(info.payload)
 
-class PacketInformation:
-    def __init__(self, packet_id, node_id, payload, payload_size):
-        self.packet_id = packet_id
-        self.node_id = node_id
-        self.payload_size = payload_size
-        self.payload = payload
-        self.snr = {}
-        self.status = {}
+    def reset(self):
+        self.data = {}
+
 
 class Server:
     def __init__(self, gateways, sim_env, application, num_measurements = 5, adr_margin_db = 10, mode = 3):
@@ -99,8 +96,17 @@ class Server:
                     tp += 3
                     Nstep += 1
                 self.adr_for_node[packet.node.id] = {'sf': sf, 'tp': tp}
+                self.packet_snr_history[packet_info.node_id].clear()
                 if not (sf == packet.para.sf and tp == packet.para.tp):
                     dl.adr_para = self.adr_for_node[packet.node.id]
             if packet.adrAckReq:
                 dl.adr_para = self.adr_for_node[packet.node.id]
         return dl
+
+    def reset(self, sim_env):
+        self.sim_env = sim_env
+        self.history = []
+        self.application.reset()
+        self.packet_snr_history = dict()  # node id : [snr]
+        self.packet_num_received_from = dict()  # node id : num_packets
+        self.adr_for_node = dict()

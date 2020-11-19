@@ -13,7 +13,7 @@ from framework.Gateway import Gateway
 from framework.TransmissionInterface import AirInterface
 from framework.LoRaParameters import LoRaParameters
 from framework.Environment import *
-from framework.Server import Server
+from framework.Backend import Server
 from config import *
 
 
@@ -89,32 +89,3 @@ def status_update():
 sim_env.process(external.update(im, contour_ax, Status()))
 sim_env.run(sim_time*MINUTE_TO_MS)
 
-received = [x.num_unique_packets_sent for x in nodes]
-sent = [x.num_packets_sent for x in nodes]
-time = [x.transmit_time for x in nodes]
-energy_usage = [x.energy_profile.origin_E_tot - x.energy_profile.usage for x in nodes]
-
-num_nodes = len(nodes)
-print('Of ', num_nodes, " nodes:")
-print("Numbers of packets sent (including retransmission):")
-print(sent)
-print("Numbers of packets successfully received:")
-print(received)
-print("Total transmission time: (s)")
-print(np.array(time)/1000.0)
-print("Total energy consumption: (J)")
-print(np.array(energy_usage)/1000.0)
-print('')
-tol_sent = sum(sent)
-tol_receive = sum(received)
-ave_e = np.average(energy_usage)
-max_e = np.max(energy_usage)
-print("Total number of packets sent: ", tol_sent)
-print("Total number of packets successfully received: ", tol_receive)
-print("Average duty circle: ", np.average(time)/(sim_time*MINUTE_TO_MS)*100, "%")
-print("Average energy consumption: {:.2f}(mJ), {:.2f}% ".format(ave_e, ave_e/BATTERY_ENERGY*100) )
-print("Maximum energy consumption: {:.2f}(mJ), {:.2f}%".format(max_e, max_e/BATTERY_ENERGY*100))
-print("Success ratio: {:.2f}%".format( tol_receive*1.0/tol_sent*100))
-
-
-input('Press Enter to continue ...')

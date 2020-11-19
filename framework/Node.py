@@ -1,21 +1,15 @@
-import math
-import enum
+from collections import deque
 
 from config import *
 from .TransmissionInterface import AirInterface
 from .LoRaParameters import LoRaParameters
-
-
-class NodeStates(enum.Enum):
-    SENDING_NO_COLLISION = 1
-    SENDING_COLLISION = 2
-    SLEEPING = 4
+from .utils import NodeStates, airtime
 
 
 class Node:
     STATE_KEYWORDS = ["location", "failure_rate", "last_update", "current_sensing",
                       "num_unique_packets_received", "num_total_packets_sent", "total_transmit_time",
-                      "total_receive_time", "total_energy_usage"]
+                      "total_receive_time", "total_energy_usage", "last_packet_success"]
     STATE_KEYS = []
 
     def __init__(self, node_id, energy_profile, lora_para: LoRaParameters,
@@ -36,6 +30,7 @@ class Node:
         self._unique_packet_id = 0  # unique packets not counting for multiple tries
         self.unique_packet_received_successfully = []  # unique packets sent successfully received
         self.num_packets_sent = 0  # total number of packets sent
+        self.last_several_packets_received_or_not = deque(maxlen=20)
 
         self.transmit_time = {}
         self.receive_time = {}
@@ -43,6 +38,7 @@ class Node:
         self.last_payload_sent = 0
         self.latest_sensed = 0
         self.last_payload_change = 0
+        self.last_packet_success = False
 
         if DEBUG:
             print('node %d' % node_id, "  @  (", self.location.x, ",", self.location.y, ")", ", ch = ",
@@ -59,6 +55,7 @@ class Node:
 
     def get_status(self, *args, **kwargs):
         s = type('Status', (object,), {})()
+        s.id = self.id
         for arg in args:
             assert arg in Node.STATE_KEYWORDS, "%s not a valid keyword"
             if arg == "location":
@@ -79,6 +76,8 @@ class Node:
                 s.total_receive_time = sum(self.receive_time.values())
             elif arg == "total_energy_usage":
                 s.total_energy_usage = self.energy_profile.usage
+            elif arg == "last_packet_success":
+                s.last_packet_success = self.last_packet_success
             else:
                 assert False, "%s is not defined"
 
@@ -107,9 +106,12 @@ class Node:
             self.unique_packet_received_successfully.append(packet.id)
             self.last_payload_change = self.latest_sensed - self.last_payload_sent
             self.last_payload_sent = self.latest_sensed
+            self.last_packet_success = True
         else:
             self.last_payload_change = 0
-        if self.adr:
+            self.last_packet_success = False
+        self.last_several_packets_received_or_not.append(self.last_packet_success)
+        if self.adr or packet.adr:
             self.ed_adr()
         self.state = NodeStates.SLEEPING
 
@@ -155,6 +157,26 @@ class Node:
             return 0
         return 1 - len(self.unique_packet_received_successfully)/ float(self.num_packets_sent)
 
+    def moving_average_per(self, num=20):
+        assert num<=20, "Only the latest 20 packets are recorded for the moving average"
+        return self.last_several_packets_received_or_not.count(False)/float(len(self.last_several_packets_received_or_not))
+
+    def reset(self, sim_env):
+        self.sim_env = sim_env
+        self.packet_to_send = None
+        self._unique_packet_id = 0  # unique packets not counting for multiple tries
+        self.unique_packet_received_successfully = []  # unique packets sent successfully received
+        self.num_packets_sent = 0  # total number of packets sent
+        self.last_several_packets_received_or_not = deque(maxlen=20)
+
+        self.transmit_time = {}
+        self.receive_time = {}
+        self.sensed_history = {}
+        self.last_payload_sent = 0
+        self.latest_sensed = 0
+        self.last_payload_change = 0
+        self.last_packet_success = False
+
 
     def sense(self, environment):
         value = environment.sense(self.location)
@@ -191,20 +213,6 @@ class EnergyProfile:
 
     def receive_energy_cost(self, bw, t):
         return EnergyProfile.rx_power_mA[[125, 250, 500].index(bw)] * self.Vdd * t / 1000
-
-
-def airtime(sf, bw, cr, h, de, pl):
-    Npream = 8  # number of preamble symbol (12.25  from Utz paper)
-    Tsym = (2.0 ** sf) / bw  # msec
-    Tpream = (Npream + 4.25) * Tsym
-    payloadSymbNB = 8 + max(
-        math.ceil(
-            (
-                    8.0 * pl - 4.0 * sf + 28 - 20 * h) / (
-                    4.0 * (sf - 2 * de)))
-        * (cr + 4), 0)
-    Tpayload = payloadSymbNB * Tsym
-    return Tpream + Tpayload  # msec
 
 
 class UplinkPacket():

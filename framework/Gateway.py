@@ -1,30 +1,7 @@
 import numpy as np
-import enum
 
 from config import *
-
-class PacketStatus(enum.Enum):
-    OK = 0
-    NOT_LISTEN = 1
-    WEAK_RSS = 2
-    WEAK_SNR = 3
-    COLLIDED = 4
-
-class PacketRecord:
-    def __init__(self, p, gateway, rss, snr, dispatch):
-        self.node_id = p.node.id
-        self.packet_id = p.id
-        self.parameter = p.para
-        self.timestamp = gateway.sim_env.now
-        self.dispatch = dispatch
-        self.status = PacketStatus.OK
-        self.rss = rss
-        self.snr = snr
-        self.payload = p.payload
-        self.transmission = p.transmission
-
-    def __str__(self):
-        return "Packet #{} from Node {} {}".format(self.packet_id, self.node_id, self.status)
+from .utils import PacketStatus, PacketRecord
 
 class Gateway:
     SENSITIVITY = { 7:np.array([-123,-120,-116]),
@@ -82,6 +59,11 @@ class Gateway:
             re.dispatch.succeed(value={self.id: re})
         return
 
+    def reset(self, sim_env):
+        self.sim_env = sim_env
+        self.num_of_packet_received = 0
+        self.receiving = []
+        self.record = []
 
 class DownlinkPacket:
     def __init__(self, adr_para = None, payload = None):

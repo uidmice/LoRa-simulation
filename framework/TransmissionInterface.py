@@ -2,18 +2,6 @@ import numpy as np
 
 from .Gateway import PacketRecord
 
-
-class Location:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-
-    def distance(self, other):
-        dx = self.x - other.x
-        dy = self.y - other.y
-        return np.sqrt(dx*dx + dy*dy)
-
-
 class PropagationModel:
     # log distance path loss model (or log normal shadowing)
     def __init__(self, gamma=2.32, d0=1000.0, std=0.5, Lpld0=128.95, GL=0):
@@ -27,6 +15,8 @@ class PropagationModel:
 
     def tp_to_rss(self, indoor: bool, tp_dBm: int, d: float):
         bpl = 0  # building path loss
+        if d == 0:
+            d = 1
         if indoor:
             bpl = np.random.choice([17, 27, 21, 30])  # according Rep. ITU-R P.2346-0
         Lpl = 10 * self.gamma * np.log10(d / self.d0) + np.random.normal(self.Lpld0, self.std) + bpl
@@ -69,3 +59,5 @@ class AirInterface:
             record = PacketRecord(p, gateway, rss, snr, dispatch[i])
             self.sim_env.process(gateway.listen(record))
 
+    def reset(self, sim_env):
+        self.sim_env = sim_env

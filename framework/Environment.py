@@ -18,6 +18,9 @@ class Environment:
     def update(self, update_rate):
         pass
 
+    def reset(self, sim_env):
+        pass
+
 class ConstantEnvironment(Environment):
     def __init__(self, sim_env, lower_right, upper_left, constant):
         super(ConstantEnvironment, self).__init__(sim_env, lower_right, upper_left)
@@ -31,18 +34,23 @@ class ConstantEnvironment(Environment):
     def update(self, update_rate):
         return
 
+    def reset(self, sim_env):
+        return
+
 
 class TempEnvironment(Environment):
     def __init__(self, sim_env, lower_right, upper_left, init_temp, dx = 1, v = np.array([1,1]), heat_map=None, fire_contour=None):
         super(TempEnvironment, self).__init__(sim_env, lower_right, upper_left)
         self.dx = dx
+        self.init_temp = init_temp
         self.T = np.ones((int((self.lower_right.x-upper_left.x)/self.dx) + 1, int((upper_left.y-lower_right.y)/self.dx) + 1))*init_temp
 
-        self.k = np.zeros(self.T.shape)
         x = range(int(upper_left.x/self.dx), int(lower_right.x/self.dx) + 1)
         y = range(int(lower_right.y/self.dx), int(upper_left.y / self.dx) + 1)
         self.xv, self.yv = np.meshgrid(x,y)
+
         n = np.random.randint(6, 10)
+        self.k = np.zeros(self.T.shape)
         for i in range(n):
             xi = np.random.choice(x)
             yi = np.random.choice(y)
@@ -109,3 +117,8 @@ class TempEnvironment(Environment):
                 plt.draw()
                 plt.pause(0.001)
                 plt.show()
+
+    def reset(self, sim_env):
+        self.T = np.ones((int((self.lower_right.x - self.upper_left.x) / self.dx) + 1,
+                          int((self.upper_left.y - self.lower_right.y) / self.dx) + 1)) * self.init_temp
+        self.sim_env = sim_env
