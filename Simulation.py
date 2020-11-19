@@ -1,5 +1,6 @@
 import simpy
-import numpy as np
+import random
+from collections import deque
 
 from framework.utils import Location
 from framework.Node import Node, EnergyProfile
@@ -75,35 +76,65 @@ class Simulation:
         yield self.sim_env.timeout(self.step_time * self.steps - self.sim_env.now)
 
     def pre_adr(self, rounds: int, show=False):
-        assert rounds > 100
-        per = np.zeros((len(self.nodes), rounds))
+        assert rounds > 50
+        N = round(0.8*len(self.nodes))
         for i in range(len(self.nodes)):
             self.nodes[i].adr = True
 
+        record_per = []
+        record_std = []
         for i in range(rounds):
             assert self.sim_env.now == self.steps * self.step_time
             self.steps += 1
-            for j in range(len(self.nodes)):
+            send_node = random.sample(range(len(self.nodes)), N )
+            for j in send_node:
                 self.sim_env.process(self._node_send_test(j))
             self.sim_env.run(self.step_time * self.steps)
-            for j in range(len(self.nodes)):
-                per[j, i] = self.nodes[j].moving_average_per()
+            per = np.zeros(N)
+            for j, idx in enumerate(send_node):
+                per[j] = self.nodes[idx].moving_average_per()
+            record_per.append(np.mean(per))
+            record_std.append(np.std(per))
+        latest_per = record_per[-50:]
+        latest_std = record_std[-50:]
+
+        while not self._check_adr_convergence(latest_per):
+            print("ADR not converging")
+            for i in range(50):
+                assert self.sim_env.now == self.steps * self.step_time
+                self.steps += 1
+                send_node = random.sample(range(len(self.nodes)), N)
+                for j in send_node:
+                    self.sim_env.process(self._node_send_test(j))
+                self.sim_env.run(self.step_time * self.steps)
+                per = np.zeros(N)
+                for j, idx in enumerate(send_node):
+                    per[j] = self.nodes[idx].moving_average_per()
+                latest_per[i] = np.mean(per)
+                latest_std[i] = np.std(per)
+            record_per.extend(latest_per)
+            record_std.extend(latest_std)
         if show:
             plt.figure(figsize=(5,5))
-            plt.plot(np.mean(per, axis=0))
+            plt.errorbar(range(len(record_per)), record_per, yerr=record_std, errorevery=10)
             plt.title("Running ADR...")
             plt.xlabel("iterations")
             plt.ylabel("Packet error rate")
-        return per
+        return record_per, record_std
 
-    def reset(self):
+    def reset(self, reset_lora=False):
         self.sim_env = simpy.Environment()
         self.steps = 0
         self.environment.reset(self.sim_env)
         self.sim_env.process(self.environment.update(UPDATA_RATE))
         for i in range(len(self.nodes)):
             self.nodes[i].reset(self.sim_env)
+            if reset_lora:
+                self.nodes[i].para = LoRaParameters(i % Gateway.NO_CHANNELS, sf=12)
         for i in range(len(self.gateways)):
             self.gateways[i].reset(self.sim_env)
         self.server.reset(self.sim_env)
         self.air_interface.reset(self.sim_env)
+
+    def _check_adr_convergence(self, mean):
+        return np.max(mean) - np.min(mean) < 0.6
