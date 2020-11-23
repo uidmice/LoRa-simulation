@@ -98,8 +98,9 @@ class Simulation:
         latest_per = record_per[-50:]
         latest_std = record_std[-50:]
 
-        while not self._check_adr_convergence(latest_per):
-            print("ADR not converging")
+        count = 0
+        threshold = 0.05
+        while not self._check_adr_convergence(latest_per, threshold):
             for i in range(50):
                 assert self.sim_env.now == self.steps * self.step_time
                 self.steps += 1
@@ -112,6 +113,10 @@ class Simulation:
                     per[j] = self.nodes[idx].moving_average_per()
                 latest_per[i] = np.mean(per)
                 latest_std[i] = np.std(per)
+            count += 1
+            if count == 20:
+                count = 0
+                threshold += 0.01
             record_per.extend(latest_per)
             record_std.extend(latest_std)
         if show:
@@ -129,6 +134,7 @@ class Simulation:
         self.sim_env.process(self.environment.update(UPDATA_RATE))
         for i in range(len(self.nodes)):
             self.nodes[i].reset(self.sim_env)
+            self.nodes[i].last_payload_sent = self.environment.sense(self.nodes[i].location)
             if reset_lora:
                 self.nodes[i].para = LoRaParameters(i % Gateway.NO_CHANNELS, sf=12)
         for i in range(len(self.gateways)):
@@ -136,5 +142,5 @@ class Simulation:
         self.server.reset(self.sim_env)
         self.air_interface.reset(self.sim_env)
 
-    def _check_adr_convergence(self, mean):
-        return np.max(mean) - np.min(mean) < 0.6
+    def _check_adr_convergence(self, mean, difference):
+        return np.max(mean) - np.min(mean) < difference
