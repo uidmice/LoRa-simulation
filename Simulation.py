@@ -121,7 +121,7 @@ class Simulation:
             record_std.extend(latest_std)
         if show:
             plt.figure(figsize=(5,5))
-            plt.errorbar(range(len(record_per)), record_per, yerr=record_std, errorevery=len(record_per)/25)
+            plt.errorbar(range(len(record_per)), record_per, yerr=record_std, errorevery=int(len(record_per)/25))
             plt.title("Running ADR...")
             plt.xlabel("iterations")
             plt.ylabel("Packet error rate")
