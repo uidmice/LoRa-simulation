@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from Simulation import Simulation
-from framework.utils import Location, Tdiff_threshold_policy, print_statistics, GreedyPolicy, PER
+from framework.utils import Location, Tdiff_threshold_policy, print_statistics, GreedyPolicy, PER, random_policy
 from config import *
 
 DEBUG = False
@@ -11,13 +11,13 @@ num_steps = 200
 step_time = 6000  # ms
 offset = 3000
 node_locations = []
-gateway_location = [Location(-1000, 1000), Location(1000, -1000)]
-for i in range(-CORD + 5, CORD + 1, 7):
-    for j in range(-CORD + 5, CORD + 1, 7):
+gateway_location = [Location(0, 0)]
+for i in range(-CORD + 5, CORD + 1, 10):
+    for j in range(-CORD + 5, CORD + 1, 10):
         x = j * GRID
         y = i * GRID
         node_locations.append(Location(x, y))
-
+print(len(node_locations))
 simulation = Simulation(node_locations, gateway_location, step_time, offset=offset)
 simulation.pre_adr(500, True)
 simulation.reset()
@@ -37,10 +37,10 @@ for i in range(num_steps):
     for j in range(len(node_locations)):
         performance['success_rate'][i, j] = 1 - s[j].failure_rate
         performance['info_fresh'][i, j] = np.exp(-np.absolute(s[j].last_update - s[j].current_sensing) / 20)
-    action = policy.action_map(simulation)
-    reward[i], iter_per[i] = simulation.step(action)
-    # reward[i], iter_per[i] = simulation.step(Tdiff_threshold_policy(20, simulation))
-    policy.update(simulation, action)
+    # action = policy.action_map(simulation)
+    # reward[i], iter_per[i] = simulation.step(action)
+    # policy.update(simulation, action)
+    reward[i], iter_per[i] = simulation.step(random_policy(0.6, simulation))
 
 print("Total packet error rate: ", str(PER(simulation)))
 # print_statistics(simulation,  num_steps)

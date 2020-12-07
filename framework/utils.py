@@ -253,6 +253,9 @@ def Tdiff_threshold_policy(T_threshold, simulation):
     return action
 
 
+def random_policy(percentage, simulation, fixed_number=False):
+    return np.random.choice([True, False], len(simulation.nodes), p=[percentage, 1-percentage])
+
 def print_statistics(simulation, num_steps):
     statistics = simulation.node_states("num_total_packets_sent", "num_unique_packets_received", "total_transmit_time",
                                         "total_energy_usage")
