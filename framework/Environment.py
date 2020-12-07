@@ -97,12 +97,11 @@ class TempEnvironment(Environment):
         dT3 = avg[2:, 1:-1] - avg[1:-1, 1:-1]
         dT4 = avg[0:-2, 1:-1] - avg[1:-1, 1:-1]
         Q = np.multiply(self.k, (dT1 + dT2 + dT3 + dT4) / 4) * self.dx * update_rate / 2000
-
         self.T += np.divide(Q, self.CG)
 
     def update(self, update_rate = UPDATA_RATE):
         while True:
-            yield self.sim_env.timeout(update_rate* 6)
+            yield self.sim_env.timeout(update_rate)
             self.step(update_rate)
 
     def reset(self, sim_env):
