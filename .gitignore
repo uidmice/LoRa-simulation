@@ -136,3 +136,5 @@ dmypy.json
 *.npy
 
 *.ipynb
+
+*.jpg
