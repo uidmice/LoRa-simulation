@@ -213,7 +213,7 @@ class PerformanceAnimation:
         plt.show()
 
     def save(self, title):
-        figure = plt.figure(0, figsize=(18, 9))
+        figure = plt.figure( figsize=(18, 9))
         ax1 = figure.add_subplot(1, 2, 1, projection='3d')
         ax2 = figure.add_subplot(1, 2, 2, projection='3d')
         ax_text = figure.add_axes([0.0, 0.95, 0.1, 0.05])

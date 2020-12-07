@@ -57,6 +57,9 @@ class Simulation:
                 received += 1
                 if self.nodes[i].last_payload_change:
                     reward += np.exp(-20/np.absolute(self.nodes[i].last_payload_change))
+        if len(send_index) == 0:
+            send_index = [1]
+            received = 0
         return reward, 1 - received/(len(send_index)*1.0)
 
     def _node_send_sensed_value(self, node_index, send):
@@ -75,9 +78,9 @@ class Simulation:
         yield self.sim_env.process(node.send(packet))
         yield self.sim_env.timeout(self.step_time * self.steps - self.sim_env.now)
 
-    def pre_adr(self, rounds: int, show=False):
+    def pre_adr(self, rounds: int, show=False, percentage=0.8):
         assert rounds > 50
-        N = round(0.8*len(self.nodes))
+        N = int(percentage*len(self.nodes))
         for i in range(len(self.nodes)):
             self.nodes[i].adr = True
 
@@ -114,9 +117,9 @@ class Simulation:
                 latest_per[i] = np.mean(per)
                 latest_std[i] = np.std(per)
             count += 1
-            if count == 20:
+            if count == int(10/percentage) or count == 15:
                 count = 0
-                threshold += 0.01
+                threshold += 0.015
             record_per.extend(latest_per)
             record_std.extend(latest_std)
         if show:

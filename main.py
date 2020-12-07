@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from Simulation import Simulation
-from framework.utils import Location, Tdiff_threshold_policy, print_statistics, GreedyPolicy, PER, random_policy
+from framework.utils import Location, Tdiff_threshold_policy, print_statistics, GreedyPolicy, PER, random_policy, T_threshold_policy
 from config import *
 
 DEBUG = False

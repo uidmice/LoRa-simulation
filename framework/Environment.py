@@ -39,7 +39,7 @@ class ConstantEnvironment(Environment):
 
 
 class TempEnvironment(Environment):
-    def __init__(self, sim_env, lower_right, upper_left, init_temp, dx = 1, v = np.array([1,1]), heat_map=None, fire_contour=None):
+    def __init__(self, sim_env, lower_right, upper_left, init_temp, dx = 1, v = np.array([1,1])):
         super(TempEnvironment, self).__init__(sim_env, lower_right, upper_left)
         self.dx = dx
         self.init_temp = init_temp
@@ -65,12 +65,7 @@ class TempEnvironment(Environment):
         self.CG = np.ones(self.T.shape)*4
 
         self.v = v
-        if heat_map:
-            assert isinstance(heat_map, matplotlib.image.AxesImage)
-        if fire_contour:
-            assert isinstance(fire_contour, matplotlib.axes.Axes)
-        self.heat_map = heat_map
-        self.fire_contour = fire_contour
+
 
 
     def generate (self, k, x, y):
@@ -87,38 +82,44 @@ class TempEnvironment(Environment):
         cy = round((location.y - self.lower_right.y)/self.dx)
         return self.T[cx, cy]
 
+    def step(self, update_rate):
+        self.T += self.H / 20
+        # print("maximum T %.4f" %(np.max(self.T)))
+        # print("minimum T %.4f" %(np.min(self.T)))
+        avg = np.zeros((self.T.shape[0] + 2, self.T.shape[1] + 2))
+        avg[1:-1, 1:-1] = self.T
+        avg[1:-1, 0] = self.T[:, -1]
+        avg[1:-1, -1] = self.T[:, 0]
+        avg[0, 1:-1] = self.T[-1, :]
+        avg[-1, 1:-1] = self.T[0, :]
+        dT1 = avg[1:-1, 2:] - avg[1:-1, 1:-1]
+        dT2 = avg[1:-1, 0:-2] - avg[1:-1, 1:-1]
+        dT3 = avg[2:, 1:-1] - avg[1:-1, 1:-1]
+        dT4 = avg[0:-2, 1:-1] - avg[1:-1, 1:-1]
+        Q = np.multiply(self.k, (dT1 + dT2 + dT3 + dT4) / 4) * self.dx * update_rate / 2000
+
+        self.T += np.divide(Q, self.CG)
+
     def update(self, update_rate = UPDATA_RATE):
         while True:
-            yield self.sim_env.timeout(update_rate)
-
-            self.T += self.H/20
-            # print("maximum T %.4f" %(np.max(self.T)))
-            # print("minimum T %.4f" %(np.min(self.T)))
-            avg = np.zeros((self.T.shape[0]+2, self.T.shape[1]+2))
-            avg[1:-1,1:-1] = self.T
-            avg[1:-1,0] = self.T[:,-1]
-            avg[1:-1,-1] = self.T[:,0]
-            avg[0, 1:-1] = self.T[-1,:]
-            avg[-1,1:-1] = self.T[0,:]
-            dT1 = avg[1:-1,2:]-avg[1:-1,1:-1]
-            dT2 = avg[1:-1,0:-2]-avg[1:-1,1:-1]
-            dT3 = avg[2:,1:-1]-avg[1:-1,1:-1]
-            dT4 = avg[0:-2,1:-1]-avg[1:-1,1:-1]
-            Q = np.multiply(self.k ,(dT1+dT2+dT3+dT4)/4) * self.dx * update_rate/2000
-
-            self.T += np.divide(Q,self.CG)
-
-            if self.heat_map:
-                self.heat_map.set_data(self.T)
-            if self.fire_contour and np.max(self.T)>333:
-                self.fire_contour.clear()
-                self.fire_contour.contour(self.T, levels=[333], colors='red', linestyles='-')
-            if self.heat_map or self.fire_contour:
-                plt.draw()
-                plt.pause(0.001)
-                plt.show()
+            yield self.sim_env.timeout(update_rate* 6)
+            self.step(update_rate)
 
     def reset(self, sim_env):
         self.T = np.ones((int((self.lower_right.x - self.upper_left.x) / self.dx) + 1,
                           int((self.upper_left.y - self.lower_right.y) / self.dx) + 1)) * self.init_temp
-        self.sim_env = sim_env
+        if sim_env:
+            self.sim_env = sim_env
+
+    def draw(self, frame_number, heat_map, fire_contour, time_text, update_rate):
+        for i in range(6):
+            self.step(update_rate)
+        assert isinstance(heat_map, matplotlib.image.AxesImage)
+        heat_map.set_data(self.T)
+        if np.max(self.T) > 333:
+            assert isinstance(fire_contour, matplotlib.axes.Axes)
+            fire_contour.clear()
+            fire_contour.contour(self.T, levels=[333], colors='red', linestyles='-')
+        time_text.set_text(str(update_rate * 12 * frame_number/1000) + "s")
+
+
