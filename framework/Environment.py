@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image, matplotlib.axes
+import math
 
 from config import *
 
@@ -82,6 +83,14 @@ class TempEnvironment(Environment):
         cy = round((location.y - self.lower_right.y)/self.dx)
         return self.T[cx, cy]
 
+    # def get_temperature_by_index(self, location):
+    #     x_max = int(math.ceil(location.x))
+    #     x_min = int(math.floor(location.x))
+    #     y_max = int(math.ceil(location.y))
+    #     y_min = int(math.floor(location.y))
+    #     return self.T
+
+
     def step(self, update_rate):
         self.T += self.H / 20
         # print("maximum T %.4f" %(np.max(self.T)))
@@ -98,6 +107,13 @@ class TempEnvironment(Environment):
         dT4 = avg[0:-2, 1:-1] - avg[1:-1, 1:-1]
         Q = np.multiply(self.k, (dT1 + dT2 + dT3 + dT4) / 4) * self.dx * update_rate / 2000
         self.T += np.divide(Q, self.CG)
+
+    def get_time_series_data(self, update_rate, step):
+        res = np.zeros((step, self.T.shape[0], self.T.shape[1]))
+        for i in range(step):
+            self.step(update_rate)
+            res[i, :, :] = self.T
+        return res
 
     def update(self, update_rate = UPDATA_RATE):
         while True:
