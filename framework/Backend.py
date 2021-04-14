@@ -6,13 +6,18 @@ from .Gateway import DownlinkPacket, PacketStatus, Gateway
 from .LoRaParameters import LoRaParameters
 from .Node import NodeStates
 from .utils import PacketInformation
+from .FieldReconstruction import FieldReconstructor
 
 class Application:
-    def __init__(self):
-        self.data = {}
+    def __init__(self, node_ids, connection):
+        self.fusion_center = FieldReconstructor(node_ids, connection)
 
     def run(self, info):
-        self.data[info.node_id] = [].append(info.payload)
+        temp = info.payload['value']
+        time = info.payload['time']
+        print(info.payload)
+        self.fusion_center.update(info.node_id, temp, time)
+
 
     def reset(self):
         self.data = {}
@@ -56,7 +61,8 @@ class Server:
             self.packet_num_received_from[p.node.id] += 1
             dl = DownlinkPacket()
             p.received = True
-            self.application.run(info)
+            if info.payload:
+                self.application.run(info)
             if not p.adr:
                 self.packet_snr_history[p.node.id].clear()
                 self.adr_for_node[p.node.id] = None

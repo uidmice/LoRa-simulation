@@ -117,7 +117,7 @@ class TempEnvironment(Environment):
 
     def update(self, update_rate = UPDATA_RATE):
         while True:
-            yield self.sim_env.timeout(update_rate)
+            yield self.sim_env.timeout(update_rate*200)
             self.step(update_rate)
 
     def reset(self, sim_env):

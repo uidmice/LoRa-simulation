@@ -17,10 +17,12 @@ DEBUG = 0
 DLtime = 1000 # msec
 MAX_RETRY = 20
 
-MAX_DISTANCE = 1500 # 5 km
+# MAX_DISTANCE = 1500 # 5 km
+MAX_DISTANCE = 2500
 GRID = 50 #m
 CORD = int(MAX_DISTANCE/GRID)
 
 MINUTE_TO_MS = 60000 # minute to ms
 UPDATA_RATE = 60 #update external environment every 1 minute
 BATTERY_ENERGY = 22572000 # 3.3V 1900 mAh battery
+init_temp = 296.15

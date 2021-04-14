@@ -14,7 +14,7 @@ from framework.Environment import *
 class Simulation:
     ENVIRONMENT_TYPE = ["temp"]
 
-    def __init__(self, nodes_positions, gateway_positions, step_time, environment="temp", offset=2000):
+    def __init__(self, nodes_positions, gateway_positions, step_time, connection, environment="temp", offset=2000):
         self.nodes = []
         self.gateways = []
         assert step_time >= offset + 3000
@@ -29,7 +29,11 @@ class Simulation:
         else:
             assert False, "%s environment is not implemented" %(environment)
         self.sim_env.process(self.environment.update(UPDATA_RATE))
-        self.server = Server(self.gateways, self.sim_env, Application())
+        link = []
+        for loc in connection:
+            for l2 in connection[loc]:
+                link.append([nodes_positions.index(loc), nodes_positions.index(l2)])
+        self.server = Server(self.gateways, self.sim_env, Application(list(range(len(nodes_positions))), link))
         self.air_interface = AirInterface(self.sim_env, self.gateways, self.server)
         for i in range(len(nodes_positions)):
             node = Node(i, EnergyProfile(0.1), LoRaParameters(i % Gateway.NO_CHANNELS, sf=12),
@@ -38,6 +42,8 @@ class Simulation:
             self.nodes.append(node)
         for i in range(len(gateway_positions)):
             self.gateways.append(Gateway(i, gateway_positions[i], self.sim_env))
+
+
 
     def node_states(self, *args, **kwargs):
         return list(a.get_status(*args, **kwargs) for a in self.nodes)
@@ -63,18 +69,21 @@ class Simulation:
         return reward, 1 - received/(len(send_index)*1.0)
 
     def _node_send_sensed_value(self, node_index, send):
-        yield self.sim_env.timeout(np.random.randint(self.offset))
         node = self.nodes[node_index]
         value = node.sense(self.environment)
+        time = self.sim_env.now
+        yield self.sim_env.timeout(np.random.randint(self.offset))
+
+
         if send:
-            packet = node.create_unique_packet(value, True, True)
+            packet = node.create_unique_packet({'value':value, 'time': time}, True, True)
             yield self.sim_env.process(node.send(packet))
         yield self.sim_env.timeout(self.step_time * self.steps - self.sim_env.now)
 
     def _node_send_test(self, node_index):
         yield self.sim_env.timeout(np.random.randint(self.offset))
         node = self.nodes[node_index]
-        packet = node.create_unique_packet(0, True, True)
+        packet = node.create_unique_packet(None, True, True)
         yield self.sim_env.process(node.send(packet))
         yield self.sim_env.timeout(self.step_time * self.steps - self.sim_env.now)
 

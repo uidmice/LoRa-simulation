@@ -115,6 +115,7 @@ class Location:
         dy = self.y - other.y
         return np.sqrt(dx * dx + dy * dy)
 
+
     @staticmethod
     def nearby_points(my_location, others, distance):
         count = 0
