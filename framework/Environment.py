@@ -69,6 +69,7 @@ class TempEnvironment(Environment):
 
 
 
+
     def generate (self, k, x, y):
         alpha = np.random.random()/2000
         beta = np.random.random()/2000
@@ -117,8 +118,8 @@ class TempEnvironment(Environment):
 
     def update(self, update_rate = UPDATA_RATE):
         while True:
-            yield self.sim_env.timeout(update_rate*200)
-            self.step(update_rate)
+            yield self.sim_env.timeout(update_rate)
+            self.step(60)
 
     def reset(self, sim_env):
         self.T = np.ones((int((self.lower_right.x - self.upper_left.x) / self.dx) + 1,

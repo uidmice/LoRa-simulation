@@ -23,6 +23,6 @@ GRID = 50 #m
 CORD = int(MAX_DISTANCE/GRID)
 
 MINUTE_TO_MS = 60000 # minute to ms
-UPDATA_RATE = 60 #update external environment every 1 minute
+UPDATA_RATE = 60 #update external environment every 1 second
 BATTERY_ENERGY = 22572000 # 3.3V 1900 mAh battery
 init_temp = 296.15

@@ -45,7 +45,7 @@ class FieldReconstructor:
 
         def estimate(self, time):
             nearby_s = np.array([[a.s for a in self.node_index_dict]])
-            return self.s + max(min((time - self.t) * np.dot(nearby_s- self.s, np.array(self.w))[0], 5), -5)
+            return self.s + max(min((time - self.t) * np.dot(nearby_s- self.s, np.array(self.w))[0], 10), -10)
 
     def __init__(self, node_ids, connection):
         self.nodes = {}

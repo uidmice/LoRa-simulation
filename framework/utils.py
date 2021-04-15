@@ -6,33 +6,18 @@ import pickle
 from config import *
 from matplotlib.animation import FuncAnimation
 
-
-def field_construct_data(simulation, num_steps, random_prob, save=False, scale = 1):
-    N = int(np.sqrt(len(simulation.nodes)))
-    name = "result/"+ simulation.config_name +"_field_prob_"+str(random_prob)
-    X_position = np.arange(N) * scale
+def play_field_video(Z, Tr, time_step=1, grid=50):
+    N = Z.shape[1]
+    X_position = np.arange(N) * grid
     X_position = X_position - np.max(X_position)/2
     X, Y = np.meshgrid(X_position, X_position)
-    Z = np.zeros((num_steps, X.shape[0], X.shape[1]))
-    Tr = np.zeros((num_steps, X.shape[0], X.shape[1]))
-    simulation.reset()
-
-    for k in range(num_steps):
-        send, success = simulation.step(random_policy(random_prob, simulation))
-        reconstruction = simulation.constructed_field
-        constructed_field = [reconstruction[n] for n in reconstruction]
-        true_field = [n.latest_sensed for n in simulation.nodes]
-        Z[k,:,:] = np.reshape(np.array(constructed_field), X.shape)
-        Tr[k,:,:] = np.reshape(np.array(true_field), X.shape)
-
-    pickle.dump([Z, Tr], open(name+".pkl", "wb"))
-    fig = plt.figure(figsize=(15,5))
+    fig = plt.figure(figsize=(15, 5))
     ax1 = fig.add_subplot(1, 3, 1, projection='3d')
     ax2 = fig.add_subplot(1, 3, 2, projection='3d')
     ax3 = fig.add_subplot(1, 3, 3, projection='3d')
-    ax1.contour3D(X, Y, Z[0,:,:], 50, cmap='binary')
-    ax2.contour3D(X, Y, Tr[0,:,:], 50, cmap='bwr')
-    ax3.contour3D(X, Y, Tr[0,:,:] - Z[0,:,:], 50, cmap='binary')
+    ax1.contour3D(X, Y, Z[0, :, :], 50, cmap='binary')
+    ax2.contour3D(X, Y, Tr[0, :, :], 50, cmap='bwr')
+    ax3.contour3D(X, Y, Tr[0, :, :] - Z[0, :, :], 50, cmap='binary')
 
     def animate(i):
         ax1.clear()
@@ -42,14 +27,60 @@ def field_construct_data(simulation, num_steps, random_prob, save=False, scale =
         ax2.contour3D(X, Y, Tr[i, :, :], 50, cmap='bwr')
         ax3.contour3D(X, Y, Tr[i, :, :] - Z[i, :, :], 50, cmap='binary')
 
-        fig.suptitle("t = %d" %(i))
+        fig.suptitle("t = %d" % (i * (time_step)))
 
-    anim = FuncAnimation(fig, animate, frames=num_steps, interval=200)
+    anim = FuncAnimation(fig, animate, frames=Z.shape[0], interval=200)
+    plt.show()
+
+def save_field_video(Z, Tr, name, time_step=1, grid=50):
+    N = Z.shape[1]
+    X_position = np.arange(N) * grid
+    X_position = X_position - np.max(X_position)/2
+    X, Y = np.meshgrid(X_position, X_position)
+    fig = plt.figure(figsize=(15, 5))
+    ax1 = fig.add_subplot(1, 3, 1, projection='3d')
+    ax2 = fig.add_subplot(1, 3, 2, projection='3d')
+    ax3 = fig.add_subplot(1, 3, 3, projection='3d')
+    ax1.contour3D(X, Y, Z[0, :, :], 50, cmap='binary')
+    ax2.contour3D(X, Y, Tr[0, :, :], 50, cmap='bwr')
+    ax3.contour3D(X, Y, Tr[0, :, :] - Z[0, :, :], 50, cmap='binary')
+
+    def animate(i):
+        ax1.clear()
+        ax2.clear()
+        ax3.clear()
+        ax1.contour3D(X, Y, Z[i, :, :], 50, cmap='binary')
+        ax2.contour3D(X, Y, Tr[i, :, :], 50, cmap='bwr')
+        ax3.contour3D(X, Y, Tr[i, :, :] - Z[i, :, :], 50, cmap='binary')
+
+        fig.suptitle("t = %d" % (i * (time_step)))
+
+    anim = FuncAnimation(fig, animate, frames=Z.shape[0], interval=200)
+    anim.save(name + '.mp4', writer='ffmpeg')
+
+def field_construct_data(simulation, num_steps, time_step, policy, save=False, scale = 1, show = False):
+    N = int(np.sqrt(len(simulation.nodes)))
+    name = "result/"+ simulation.name +"_field_" + policy.name
+    Z = np.zeros((num_steps, N, N))
+    Tr = np.zeros((num_steps, N, N))
+    simulation.reset()
+
+    for k in range(num_steps):
+        send, success = simulation.step(policy(simulation))
+        reconstruction = simulation.constructed_field
+        constructed_field = [reconstruction[n] for n in reconstruction]
+        true_field = [n.latest_sensed for n in simulation.nodes]
+        Z[k,:,:] = np.reshape(np.array(constructed_field), (N, N))
+        Tr[k,:,:] = np.reshape(np.array(true_field), (N, N))
+
+    pickle.dump([Z, Tr], open(name+".pkl", "wb"))
+
+    if show:
+        play_field_video(Z, Tr, time_step, scale)
 
     if save:
-        anim.save(name+'.mp4', writer='ffmpeg')
-    else:
-        plt.show()
+        save_field_video(Z, Tr, name, time_step, scale)
+
 
 
 def load_config(name):

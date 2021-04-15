@@ -217,7 +217,7 @@ class EnergyProfile:
 
 class UplinkPacket():
     def __init__(self, node: Node, id, payload=0, adr=True, adrAckReq=False):
-        self.id = node.id
+        self.id = id
         self.node = node
         self.para = node.para
         self.payload = payload
