@@ -41,7 +41,7 @@ class Simulation:
         self.app = Application(list(range(len(nodes_positions))), link)
         self.server = Server(self.gateways, self.sim_env, self.app)
         self.air_interface = AirInterface(self.sim_env, self.gateways, self.server)
-        config_file = './config/'+config_name+'_lora.pickle'
+        config_file = './config/'+config_name+'_lora_'+ str(Gateway.NO_CHANNELS) +'.pickle'
         lora_para_exist = False
         if os.path.exists(config_file):
             lora_para = pickle.load(open(config_file, 'rb'))
@@ -133,7 +133,7 @@ class Simulation:
         latest_std = record_std[-50:]
 
         count = 0
-        threshold = 0.1
+        threshold = 0.2
         while not self._check_adr_convergence(latest_per, threshold):
             for i in range(50):
                 assert self.sim_env.now == self.steps * self.step_time

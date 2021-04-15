@@ -6,6 +6,10 @@ import pickle
 from config import *
 from matplotlib.animation import FuncAnimation
 
+def play_heat_map (Z):
+    fig = plt.figure(figsize=(10, 10))
+
+
 def play_field_video(Z, Tr, time_step=1, grid=50):
     N = Z.shape[1]
     X_position = np.arange(N) * grid
@@ -29,7 +33,7 @@ def play_field_video(Z, Tr, time_step=1, grid=50):
 
         fig.suptitle("t = %d" % (i * (time_step)))
 
-    anim = FuncAnimation(fig, animate, frames=Z.shape[0], interval=200)
+    ani = FuncAnimation(fig, animate, frames=Z.shape[0], interval=200)
     plt.show()
 
 def save_field_video(Z, Tr, name, time_step=1, grid=50):
