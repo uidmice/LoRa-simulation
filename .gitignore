@@ -135,8 +135,6 @@ result/*
 *.mp4
 *.npy
 
-*.ipynb
-
 *.jpg
 
 *.gif
