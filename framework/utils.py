@@ -2,9 +2,63 @@ import numpy as np
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import enum, math
-
+import pickle
 from config import *
+from matplotlib.animation import FuncAnimation
 
+
+def field_construct_data(simulation, num_steps, random_prob, save=False, scale = 1):
+    N = int(np.sqrt(len(simulation.nodes)))
+    name = "result/"+ simulation.config_name +"_field_prob_"+str(random_prob)
+    X_position = np.arange(N) * scale
+    X_position = X_position - np.max(X_position)/2
+    X, Y = np.meshgrid(X_position, X_position)
+    Z = np.zeros((num_steps, X.shape[0], X.shape[1]))
+    Tr = np.zeros((num_steps, X.shape[0], X.shape[1]))
+    simulation.reset()
+
+    for k in range(num_steps):
+        send, success = simulation.step(random_policy(random_prob, simulation))
+        reconstruction = simulation.constructed_field
+        constructed_field = [reconstruction[n] for n in reconstruction]
+        true_field = [n.latest_sensed for n in simulation.nodes]
+        Z[k,:,:] = np.reshape(np.array(constructed_field), X.shape)
+        Tr[k,:,:] = np.reshape(np.array(true_field), X.shape)
+
+    pickle.dump([Z, Tr], open(name+".pkl", "wb"))
+    fig = plt.figure(figsize=(15,5))
+    ax1 = fig.add_subplot(1, 3, 1, projection='3d')
+    ax2 = fig.add_subplot(1, 3, 2, projection='3d')
+    ax3 = fig.add_subplot(1, 3, 3, projection='3d')
+    ax1.contour3D(X, Y, Z[0,:,:], 50, cmap='binary')
+    ax2.contour3D(X, Y, Tr[0,:,:], 50, cmap='bwr')
+    ax3.contour3D(X, Y, Tr[0,:,:] - Z[0,:,:], 50, cmap='binary')
+
+    def animate(i):
+        ax1.clear()
+        ax2.clear()
+        ax3.clear()
+        ax1.contour3D(X, Y, Z[i, :, :], 50, cmap='binary')
+        ax2.contour3D(X, Y, Tr[i, :, :], 50, cmap='bwr')
+        ax3.contour3D(X, Y, Tr[i, :, :] - Z[i, :, :], 50, cmap='binary')
+
+        fig.suptitle("t = %d" %(i))
+
+    anim = FuncAnimation(fig, animate, frames=num_steps, interval=200)
+
+    if save:
+        anim.save(name+'.mp4', writer='ffmpeg')
+    else:
+        plt.show()
+
+
+def load_config(name):
+    try:
+        a, b, c = pickle.load(open('./config/'+name + '.pickle','rb') )
+        return a, b, c
+    except:
+        print(name + ".pickle does not exist")
+        return pickle.load(open('./config/config1.pickle','rb') )
 
 def airtime(sf, bw, cr, h, de, pl):
     Npream = 8  # number of preamble symbol (12.25  from Utz paper)

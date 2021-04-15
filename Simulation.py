@@ -9,18 +9,20 @@ from framework.TransmissionInterface import AirInterface
 from framework.Backend import Server, Application
 from framework.LoRaParameters import LoRaParameters
 from framework.Environment import *
-
+import os.path
+import pickle
 
 class Simulation:
     ENVIRONMENT_TYPE = ["temp"]
 
-    def __init__(self, nodes_positions, gateway_positions, step_time, connection, environment="temp", offset=2000):
+    def __init__(self, nodes_positions, gateway_positions, step_time, connection, config_name, environment="temp", offset=2000):
         self.nodes = []
         self.gateways = []
         assert step_time >= offset + 3000
         self.step_time = step_time
         self.offset = offset
         self.steps = 0
+        self.config_name = config_name
         self.sim_env = simpy.Environment()
         assert environment in Simulation.ENVIRONMENT_TYPE
         if environment == "temp":
@@ -33,15 +35,31 @@ class Simulation:
         for loc in connection:
             for l2 in connection[loc]:
                 link.append([nodes_positions.index(loc), nodes_positions.index(l2)])
-        self.server = Server(self.gateways, self.sim_env, Application(list(range(len(nodes_positions))), link))
+        self.app = Application(list(range(len(nodes_positions))), link)
+        self.server = Server(self.gateways, self.sim_env, self.app)
         self.air_interface = AirInterface(self.sim_env, self.gateways, self.server)
+        config_file = './config/'+config_name+'_lora.pickle'
+        lora_para_exist = False
+        if os.path.exists(config_file):
+            lora_para = pickle.load(open(config_file, 'rb'))
+            lora_para_exist = True
+        else:
+            lora_para = [ LoRaParameters(i % Gateway.NO_CHANNELS, sf=12) for i in range(len(nodes_positions))]
         for i in range(len(nodes_positions)):
-            node = Node(i, EnergyProfile(0.1), LoRaParameters(i % Gateway.NO_CHANNELS, sf=12),
+            node = Node(i, EnergyProfile(0.1), lora_para[i],
                                    self.air_interface, self.sim_env, nodes_positions[i], True)
             node.last_payload_sent = self.environment.sense(nodes_positions[i])
             self.nodes.append(node)
         for i in range(len(gateway_positions)):
             self.gateways.append(Gateway(i, gateway_positions[i], self.sim_env))
+
+        self.constructed_field = None
+
+        if not lora_para_exist:
+            print("Start generating new lora configuration file for " + config_name)
+            self.pre_adr(1000, True, percentage=0.6)
+            pickle.dump([n.para for n in self.nodes], open(config_file, 'wb'))
+            self.reset()
 
 
 
@@ -51,29 +69,25 @@ class Simulation:
     def step(self, actions):
         assert len(self.nodes) == len(actions)
         assert self.sim_env.now == self.steps * self.step_time
+        self.constructed_field = self.field_reconstruction()
         self.steps += 1
         send_index = [idx for idx, send in enumerate(actions) if send]
         for i in range(len(self.nodes)):
             self.sim_env.process(self._node_send_sensed_value(i, actions[i]))
         self.sim_env.run(self.step_time * self.steps)
-        reward = 0
-        received = 0
+        received = []
         for i in send_index:
             if self.nodes[i].packet_to_send.received:
-                received += 1
-                if self.nodes[i].last_payload_change:
-                    reward += np.exp(-20/np.absolute(self.nodes[i].last_payload_change))
-        if len(send_index) == 0:
-            send_index = [1]
-            received = 0
-        return reward, 1 - received/(len(send_index)*1.0)
+                received.append(i)
+                # if self.nodes[i].last_payload_change:
+                #     reward += np.exp(-20/np.absolute(self.nodes[i].last_payload_change))
+        return send_index, received
 
     def _node_send_sensed_value(self, node_index, send):
         node = self.nodes[node_index]
         value = node.sense(self.environment)
         time = self.sim_env.now
         yield self.sim_env.timeout(np.random.randint(self.offset))
-
 
         if send:
             packet = node.create_unique_packet({'value':value, 'time': time}, True, True)
@@ -126,11 +140,26 @@ class Simulation:
                 latest_per[i] = np.mean(per)
                 latest_std[i] = np.std(per)
             count += 1
-            if count == int(10/percentage) or count == 15:
-                count = 0
-                threshold += 0.015
+            if count == int(10/percentage) or count == 10:
+                self.reset(True)
+                plt.figure(figsize=(5, 5))
+                plt.errorbar(range(len(record_per)), record_per, yerr=record_std, errorevery=int(len(record_per) / 25))
+                plt.title("Running ADR...")
+                plt.xlabel("iterations")
+                plt.ylabel("Packet error rate")
+                plt.show()
+                return self.pre_adr(rounds, show, percentage)
             record_per.extend(latest_per)
             record_std.extend(latest_std)
+        if np.average(record_per[-50:-1]) > 0.6:
+            self.reset(True)
+            plt.figure(figsize=(5, 5))
+            plt.errorbar(range(len(record_per)), record_per, yerr=record_std, errorevery=int(len(record_per) / 25))
+            plt.title("Running ADR...")
+            plt.xlabel("iterations")
+            plt.ylabel("Packet error rate")
+            plt.show()
+            return self.pre_adr(rounds, show, percentage)
         if show:
             plt.figure(figsize=(5,5))
             plt.errorbar(range(len(record_per)), record_per, yerr=record_std, errorevery=int(len(record_per)/25))
@@ -156,3 +185,10 @@ class Simulation:
 
     def _check_adr_convergence(self, mean, difference):
         return np.max(mean) - np.min(mean) < difference
+
+    def field_reconstruction(self):
+        return self.app.fusion_center.field_reconstruct(self.step_time * (self.steps))
+
+    def eval_positive(self):
+        diff = np.array([n.latest_sensed for n in self.nodes]) - np.fromiter(self.constructed_field.values(), dtype=float)
+        return diff

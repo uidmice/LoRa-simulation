@@ -7,7 +7,6 @@ class FieldReconstructor:
             self.id = id
             self.s = init_temp
             self.t = 0 #time
-            self.es_s_change = 0
 
             self.node_index_dict = {}
             self.w = []
@@ -18,21 +17,20 @@ class FieldReconstructor:
         def connect(self, other):
             self.node_index_dict[other] = len(self.w)
             other.node_index_dict[self] = len(other.w)
-            self.w.append(0.1)
-            other.w.append(0.1)
+            self.w.append(0.001)
+            other.w.append(0.001)
             self.hist.append(0)
             other.hist.append(0)
 
         def update(self, temp, time):
-            self.ds[(temp - self.s)/(time - self.t)] = self.hist
+            self.ds[time] = self.hist
             self.s = temp
             self.t = time
-            self.es_s_change = 0
             self.hist = np.zeros(len(self.w))
             for d in self.node_index_dict:
                 d.nearby_update(self)
 
-            if len(self.ds) == 6:
+            if len(self.ds) == 10:
                 M = np.array([self.ds[a] for a in self.ds])
                 w = np.linalg.pinv(M) @ np.array([[a for a in self.ds]]).T
                 self.dw = w - np.array(self.w)
@@ -47,7 +45,7 @@ class FieldReconstructor:
 
         def estimate(self, time):
             nearby_s = np.array([[a.s for a in self.node_index_dict]])
-            return self.s + (time - self.t) * np.dot(nearby_s- self.s, np.array(self.w))
+            return self.s + max(min((time - self.t) * np.dot(nearby_s- self.s, np.array(self.w))[0], 5), -5)
 
     def __init__(self, node_ids, connection):
         self.nodes = {}
@@ -59,25 +57,18 @@ class FieldReconstructor:
     def update(self, node_id, temp, time):
         self.nodes[node_id].update(temp, time)
 
+    def field_estimate(self, node_id, time):
+        assert node_id in self.nodes
+        return self.nodes[node_id].estimate(time)
 
+    def field_reconstruct(self, time):
+        local = {}
+        for node in self.nodes:
+            local[node] = self.field_estimate(node, time)
+        rt = {}
+        for node in self.nodes:
+            nearby = [n.id for n in self.nodes[node].node_index_dict]
+            nearby.append(node)
+            rt[node] = np.average([local[i] for i in nearby])
+        return rt
 
-
-
-
-
-# X, Y = np.meshgrid(X_position, X_position)
-# Z = np.zeros((estimator.T, X.shape[0], X.shape[1]))
-# Tr = np.zeros((estimator.T, X.shape[0], X.shape[1]))
-# # for i, device in enumerate(devices):
-# #     print("Device %f @ (%.1f, %.1f)" %(device.id, device.state.location.x, device.state.location.y))
-# #     print("(%.1f, %.1f)" %(X[i%N][i//N], Y[i%N][i//N]))
-# chosen = random.sample(range(len(devices)), int(g))
-#
-# for t in range(estimator.T-1):
-#     for i in chosen:
-#         devices[i].update(t+1)
-#     S = [a.get_temp(t+1) for a in devices]
-#     Temp = [a._get_local_temp(t+1) for a in devices]
-#     Z[t,:,:] = np.reshape(S, X.shape)
-#     Tr[t, :, :] = np.reshape(Temp, X.shape)
-#     chosen = random.sample(range(len(devices)), 60)

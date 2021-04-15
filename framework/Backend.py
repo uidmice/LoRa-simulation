@@ -15,7 +15,6 @@ class Application:
     def run(self, info):
         temp = info.payload['value']
         time = info.payload['time']
-        print(info.payload)
         self.fusion_center.update(info.node_id, temp, time)
 
 
