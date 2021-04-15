@@ -16,15 +16,13 @@ config = 'config2'
 
 gateway_location, node_locations, connection = load_config(config)
 simulation = Simulation(node_locations, gateway_location, step_time, connection, config, offset=offset, update_rate=fire_update)
-policy = lambda x: random_policy(0.5, x)
-policy.name = "random_0.1"
+# policy = lambda x: random_policy(0.5, x)
+# policy.name = "random_0.1"
 # field_construct_data(simulation, num_steps, step_time/1000, policy, scale=100, show=True)
 
  # STATE_KEYWORDS = ["location", "failure_rate", "last_update", "current_sensing",
     #                   "num_unique_packets_received", "num_total_packets_sent", "total_transmit_time",
     #                   "total_receive_time", "total_energy_usage", "last_packet_success"]
-
-
 
 repeat = 5
 random_para = [0.1,0.2,0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
