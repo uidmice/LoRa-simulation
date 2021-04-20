@@ -44,11 +44,13 @@ class Simulation:
         self.air_interface = AirInterface(self.sim_env, self.gateways, self.server)
         config_file = './config/'+config_name+'_lora_'+ str(Gateway.NO_CHANNELS) +'.pickle'
         lora_para_exist = False
-        if os.path.exists(config_file):
+        # if os.path.exists(config_file):
+        if False:
             lora_para = pickle.load(open(config_file, 'rb'))
             lora_para_exist = True
         else:
-            lora_para = [ LoRaParameters(i % Gateway.NO_CHANNELS, sf=12) for i in range(len(nodes_positions))]
+            lora_para_exist = True
+            lora_para = [ LoRaParameters(i % Gateway.NO_CHANNELS, sf=9 + i %2) for i in range(len(nodes_positions))]
         for i in range(len(nodes_positions)):
             node = Node(i, EnergyProfile(0.1), lora_para[i],
                                    self.air_interface, self.sim_env, nodes_positions[i], True)

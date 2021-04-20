@@ -1,6 +1,6 @@
 class LoRaParameters:
 
-    SPREADING_FACTORS = [12, 11, 10, 9, 8, 7]
+    SPREADING_FACTORS = [ 10, 9, 8, 7]
     BAND_WIDTH = [125, 250, 500]
     CHANNELS = range(902300000, 915000000, 200000)
     TP_DBM = range(0, 22)

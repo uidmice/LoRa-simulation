@@ -8,6 +8,7 @@ class FieldReconstructor:
             self.s = init_temp
             self.t = 0 #time
             self.changes = 0
+            self.dchanges = 0
 
             self.node_index_dict = {}
             self.w = None
@@ -26,7 +27,9 @@ class FieldReconstructor:
             other.hist = np.zeros(other.num_nearby)
 
         def update(self, temp, time):
-            self.changes = (temp - self.s) / max(time - self.t, 1)
+            changes = (temp - self.s) / max(time - self.t, 1)
+            self.dchanges = (changes - self.changes)/ max(time - self.t, 1)
+            self.changes = changes
             # self.ds[time - self.t] = self.hist
             # self.s = temp
             # self.t = time
@@ -50,7 +53,7 @@ class FieldReconstructor:
             self.hist[idx] += (update_node.s - self.s)/max(update_node.t - self.t, 1)
 
         def estimate(self, time):
-            return self.s + self.changes * (time - self.t), self.changes * (time - self.t)
+            return self.s + self.changes * (time - self.t)  + self.dchanges* (time - self.t)**2 , self.changes * (time - self.t)
             # nearby_s = np.array([[a.s for a in self.node_index_dict]])
             # changes = (time - self.t) * np.dot(nearby_s- self.s, self.w)[0]
             # return self.s + min(max(changes, 5), -5), changes
