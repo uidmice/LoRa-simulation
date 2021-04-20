@@ -77,8 +77,8 @@ class TempEnvironment(Environment):
     def sense (self, location, time):
         assert self.upper_left.x <= location.x <= self.lower_right.x, "x coordinate is out of bound"
         assert self.upper_left.y >= location.y >= self.lower_right.y, "y coordinate is out of bound"
-        cx = round((location.x - self.upper_left.x)/self.dx)
-        cy = round((location.y - self.lower_right.y)/self.dx)
+        cx = int(round((location.x - self.upper_left.x)/self.dx))
+        cy = int(round((location.y - self.lower_right.y)/self.dx))
 
         return self.T_field[time//self.update_rate, cx, cy]
 
