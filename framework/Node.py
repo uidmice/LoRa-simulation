@@ -179,7 +179,7 @@ class Node:
 
 
     def sense(self, environment):
-        value = environment.sense(self.location)
+        value = environment.sense(self.location, self.sim_env.now)
         self.sensed_history[self.sim_env.now] = value
         self.latest_sensed = value
         return value

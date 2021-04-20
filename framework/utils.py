@@ -5,9 +5,91 @@ import enum, math
 import pickle
 from config import *
 from matplotlib.animation import FuncAnimation
+from scipy import interpolate
+import naturalneighbor
 
-def play_heat_map (Z):
+def extend_field(X, Y, Z, distance):
+    xmin_idx = np.argpartition(X, 10)[:10]
+    xmax_idx = np.setdiff1d(np.argpartition(X, -10)[-10:], xmin_idx)
+    selected = np.union1d(xmin_idx, xmax_idx)
+    ymin_idx = np.setdiff1d(np.argpartition(Y, 10)[:10], selected)
+    selected = np.union1d(selected, ymin_idx)
+    ymax_idx = np.setdiff1d(np.argpartition(X, -10)[-10:], selected)
+    Xp = np.concatenate((np.tile(X[xmin_idx] + 2 * distance, 3), np.tile(X[xmax_idx] - 2 * distance, 3)))
+    Yp = np.array([Y[xmin_idx] - 2 * distance, Y[xmin_idx], Y[xmin_idx] + 2*distance]).flatten()
+    Y_addp= np.array([Y[xmax_idx] - 2 * distance, Y[xmax_idx], Y[xmax_idx] + 2*distance]).flatten()
+    Yp = np.concatenate((Y, Yp, Y_addp, np.tile(Y[ymin_idx] + 2 * distance, 3), np.tile(Y[ymax_idx] - 2 * distance, 3)))
+    X_addp =np.concatenate((np.array([X[ymin_idx] - 2 * distance, X[ymin_idx], X[ymin_idx] + 2*distance]).flatten(), np.array([X[ymax_idx] - 2 * distance, X[ymax_idx], X[ymax_idx] + 2*distance]).flatten()))
+    Xp = np.concatenate((X, Xp, X_addp))
+    Zp = np.concatenate((Z, np.tile(Z[xmin_idx] , 3), np.tile(Z[xmax_idx], 3), np.tile(Z[ymin_idx] , 3), np.tile(Z[ymax_idx], 3)))
+    return Xp, Yp, Zp
+
+def natural_neighbor_interpolation(X, Y, Z, distance):
+    Xp, Yp, Zp = extend_field(X, Y, Z, distance)
+    points = np.array([Xp, Yp, np.zeros(Xp.shape)]).T
+    range = [[-distance, distance+1, GRID],[-distance, distance+1, GRID],[0,1,1]]
+    return naturalneighbor.griddata(points, Zp, range).reshape((distance * 2//GRID + 1, distance * 2//GRID + 1))
+
+def griddata_interpolate(X, Y, Z, xx, yy,distance, method='cubic'):
+    Xp, Yp, Zp = extend_field(X, Y, Z, distance)
+    points = np.array([Xp, Yp]).T
+    return interpolate.griddata(points, Zp, (xx, yy), method=method)
+
+def random_network_construct(simulation, num_steps, policy):
+    N = len(simulation.nodes)
+    name = "result/"+ simulation.name +"_field_" + policy.name
+    Z = np.zeros((num_steps, N))
+    Tr = np.zeros((num_steps, N))
+    simulation.reset()
+
+    for k in range(num_steps):
+        simulation.step(policy(simulation))
+        reconstruction = simulation.constructed_field
+        true = simulation.real_field
+        constructed_field = [reconstruction[n] for n in reconstruction]
+        true_field = [true[n] for n in true]
+        Z[k,:] = np.array(constructed_field)
+        Tr[k,:] = np.array(true_field)
+    X = [n.location.x for n in simulation.nodes]
+    Y = [n.location.y for n in simulation.nodes]
+    pickle.dump([X, Y, Z, Tr], open(name+".pkl", "wb"))
+
+
+def play_heat_map (Z, distance, nodes=None, contour=None):
     fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(1, 1, 1)
+    im = ax.imshow(Z[0,:,:], alpha=.5, interpolation='bicubic', cmap='RdYlGn_r', origin='lower'
+,extent=[-distance, distance, - distance, distance] )
+    ax.axes.xaxis.set_visible(False)
+    ax.axes.yaxis.set_visible(False)
+    im.set_clim(np.max(Z), np.min(Z))
+    plt.colorbar(im, orientation='horizontal', pad=0.08)
+    plt.axis('off')
+
+    if nodes:
+        deploy_ax = fig.add_axes(ax.get_position(), frameon=False)
+        deploy_ax.set_xlim([-distance, distance])
+        deploy_ax.set_ylim([-distance, distance])
+        deploy_ax.scatter(0, 0, s=80, marker='X', c='r')
+        for n in nodes:
+            deploy_ax.scatter(n.x, n.y, s=20, c='blue')
+
+    if contour:
+        contour_ax = fig.add_axes(ax.get_position(), frameon=False)
+        contour_ax.set_xlim([-distance, distance])
+        contour_ax.set_ylim([-distance, distance])
+        contour_ax.axes.xaxis.set_visible(False)
+        contour_ax.axes.yaxis.set_visible(False)
+
+    def animate(i):
+        im.set_data(Z[i,:,:])
+        fig.suptitle("t = %d" % (i ))
+        if contour and np.max(Z[i,:,:]) > contour:
+            contour_ax.clear()
+            contour_ax.contour(Z[i,:,:], levels=[contour], colors='red', linestyles='-')
+
+    ani = FuncAnimation(fig, animate, frames=Z.shape[0], interval=200)
+    ani.save('random.mp4', writer='ffmpeg')
 
 
 def play_field_video(Z, Tr, time_step=1, grid=50):
@@ -89,8 +171,8 @@ def field_construct_data(simulation, num_steps, time_step, policy, save=False, s
 
 def load_config(name):
     try:
-        a, b, c = pickle.load(open('./config/'+name + '.pickle','rb') )
-        return a, b, c
+        a, b, c, d = pickle.load(open('./config/'+name + '.pickle','rb') )
+        return a, b, c, d
     except:
         print(name + ".pickle does not exist")
         return pickle.load(open('./config/config1.pickle','rb') )

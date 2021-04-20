@@ -6,28 +6,25 @@ import math
 from config import *
 
 class Environment:
-    def __init__(self, sim_env, lower_right, upper_left):
-        self.sim_env = sim_env
+    def __init__(self, lower_right, upper_left, total_time):
         assert lower_right.x > upper_left.x, "lower right corner should have a greater x value"
         assert lower_right.y < upper_left.y, "lower right corner should have a smaller y value"
         self.lower_right = lower_right
         self.upper_left = upper_left
+        self.total_time = total_time
 
-    def sense(self, location) -> float:
-        pass
-
-    def update(self, update_rate):
+    def sense(self, location, time) -> float:
         pass
 
     def reset(self, sim_env):
         pass
 
 class ConstantEnvironment(Environment):
-    def __init__(self, sim_env, lower_right, upper_left, constant):
-        super(ConstantEnvironment, self).__init__(sim_env, lower_right, upper_left)
+    def __init__(self, lower_right, upper_left, constant, total_time):
+        super(ConstantEnvironment, self).__init__(lower_right, upper_left, total_time)
         self.constant = constant
 
-    def sense(self, location):
+    def sense(self, location, time):
         assert self.upper_left.x <= location.x <= self.lower_right.x, "x coordinate is out of bound"
         assert self.upper_left.y >= location.y >= self.lower_right.y, "y coordinate is out of bound"
         return self.constant
@@ -40,8 +37,8 @@ class ConstantEnvironment(Environment):
 
 
 class TempEnvironment(Environment):
-    def __init__(self, sim_env, lower_right, upper_left, init_temp, dx = 1, v = np.array([1,1])):
-        super(TempEnvironment, self).__init__(sim_env, lower_right, upper_left)
+    def __init__(self, lower_right, upper_left, init_temp, total_time: int, update_rate, dx = 1, v = np.array([1, 1])):
+        super(TempEnvironment, self).__init__(lower_right, upper_left, total_time)
         self.dx = dx
         self.init_temp = init_temp
         self.T = np.ones((int((self.lower_right.x-upper_left.x)/self.dx) + 1, int((upper_left.y-lower_right.y)/self.dx) + 1))*init_temp
@@ -67,8 +64,8 @@ class TempEnvironment(Environment):
 
         self.v = v
 
-
-
+        self.T_field = self.get_time_series_data(UPDATA_RATE, self.total_time//UPDATA_RATE)
+        self.update_rate = update_rate
 
     def generate (self, k, x, y):
         alpha = np.random.random()/2000
@@ -77,12 +74,14 @@ class TempEnvironment(Environment):
         return k
 
 
-    def sense (self, location):
+    def sense (self, location, time):
         assert self.upper_left.x <= location.x <= self.lower_right.x, "x coordinate is out of bound"
         assert self.upper_left.y >= location.y >= self.lower_right.y, "y coordinate is out of bound"
         cx = round((location.x - self.upper_left.x)/self.dx)
         cy = round((location.y - self.lower_right.y)/self.dx)
-        return self.T[cx, cy]
+
+        return self.T_field[time//self.update_rate, cx, cy]
+
 
     # def get_temperature_by_index(self, location):
     #     x_max = int(math.ceil(location.x))
@@ -116,16 +115,16 @@ class TempEnvironment(Environment):
             res[i, :, :] = self.T
         return res
 
-    def update(self, update_rate = UPDATA_RATE):
-        while True:
-            yield self.sim_env.timeout(update_rate)
-            self.step(60)
-
-    def reset(self, sim_env):
-        self.T = np.ones((int((self.lower_right.x - self.upper_left.x) / self.dx) + 1,
-                          int((self.upper_left.y - self.lower_right.y) / self.dx) + 1)) * self.init_temp
-        if sim_env:
-            self.sim_env = sim_env
+    # def update(self, update_rate = UPDATA_RATE):
+    #     while True:
+    #         yield self.sim_env.timeout(update_rate)
+    #         self.step(60)
+    #
+    # def reset(self, sim_env):
+    #     self.T = np.ones((int((self.lower_right.x - self.upper_left.x) / self.dx) + 1,
+    #                       int((self.upper_left.y - self.lower_right.y) / self.dx) + 1)) * self.init_temp
+    #     if sim_env:
+    #         self.sim_env = sim_env
 
     def draw(self, frame_number, heat_map, fire_contour, time_text, update_rate):
         for i in range(6):

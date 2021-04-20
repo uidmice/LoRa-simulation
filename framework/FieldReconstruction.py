@@ -7,36 +7,42 @@ class FieldReconstructor:
             self.id = id
             self.s = init_temp
             self.t = 0 #time
+            self.changes = 0
 
             self.node_index_dict = {}
-            self.w = []
-            self.dw = np.array([])
+            self.w = None
             self.ds = {}
-            self.hist = []
+            self.hist = None
+            self.num_nearby = 0
 
         def connect(self, other):
-            self.node_index_dict[other] = len(self.w)
-            other.node_index_dict[self] = len(other.w)
-            self.w.append(0.001)
-            other.w.append(0.001)
-            self.hist.append(0)
-            other.hist.append(0)
+            self.node_index_dict[other] = self.num_nearby
+            other.node_index_dict[self] = other.num_nearby
+            self.num_nearby += 1
+            other.num_nearby += 1
+            self.w = np.ones(self.num_nearby) *0.005
+            other.w = np.ones(other.num_nearby) *0.005
+            self.hist = np.zeros(self.num_nearby)
+            other.hist = np.zeros(other.num_nearby)
 
         def update(self, temp, time):
-            self.ds[time] = self.hist
-            self.s = temp
-            self.t = time
-            self.hist = np.zeros(len(self.w))
-            for d in self.node_index_dict:
-                d.nearby_update(self)
-
-            if len(self.ds) == 10:
-                M = np.array([self.ds[a] for a in self.ds])
-                w = np.linalg.pinv(M) @ np.array([[a for a in self.ds]]).T
-                self.dw = w - np.array(self.w)
-                self.w = w
-                self.ds = {}
-            return
+            self.changes = (temp - self.s) / max(time - self.t, 1)
+            # self.ds[time - self.t] = self.hist
+            # self.s = temp
+            # self.t = time
+            # self.hist = np.zeros(self.num_nearby)
+            #
+            # for d in self.node_index_dict:
+            #     d.nearby_update(self)
+            #
+            # if len(self.ds) == 6:
+            #     M = np.array([self.ds[a] for a in self.ds])
+            #     w = np.linalg.pinv(M) @ np.array([[a for a in self.ds]]).T
+            #
+            #     self.dw = w - self.w
+            #     self.w = w
+            #     self.ds = {}
+            # return
 
         def nearby_update(self, update_node):
             assert update_node in self.node_index_dict
@@ -44,8 +50,10 @@ class FieldReconstructor:
             self.hist[idx] += (update_node.s - self.s)/max(update_node.t - self.t, 1)
 
         def estimate(self, time):
-            nearby_s = np.array([[a.s for a in self.node_index_dict]])
-            return self.s + max(min((time - self.t) * np.dot(nearby_s- self.s, np.array(self.w))[0], 10), -10)
+            return self.s + self.changes * (time - self.t), self.changes * (time - self.t)
+            # nearby_s = np.array([[a.s for a in self.node_index_dict]])
+            # changes = (time - self.t) * np.dot(nearby_s- self.s, self.w)[0]
+            # return self.s + min(max(changes, 5), -5), changes
 
     def __init__(self, node_ids, connection):
         self.nodes = {}
@@ -63,12 +71,13 @@ class FieldReconstructor:
 
     def field_reconstruct(self, time):
         local = {}
+        changes = {}
         for node in self.nodes:
-            local[node] = self.field_estimate(node, time)
+            local[node], changes[node] = self.field_estimate(node, time)
         rt = {}
         for node in self.nodes:
             nearby = [n.id for n in self.nodes[node].node_index_dict]
             nearby.append(node)
             rt[node] = np.average([local[i] for i in nearby])
-        return rt
+        return rt, changes
 

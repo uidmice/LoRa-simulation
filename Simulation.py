@@ -15,7 +15,7 @@ import pickle
 class Simulation:
     ENVIRONMENT_TYPE = ["temp"]
 
-    def __init__(self, nodes_positions, gateway_positions, step_time, connection, config_name, environment="temp", offset=2000, update_rate = UPDATA_RATE):
+    def __init__(self, nodes_positions, gateway_positions, step_time, connection, config_name, distance, num_steps, environment="temp", offset=2000, update_rate = UPDATA_RATE):
         self.nodes = []
         self.gateways = []
         assert step_time >= offset + 3000
@@ -23,17 +23,18 @@ class Simulation:
         self.offset = offset
         self.steps = 0
         self.name = config_name + "_update_" + str(update_rate)
+        self.update_rate = update_rate
+        self.num_steps = num_steps
         self.sim_env = simpy.Environment()
         self.channel_nodes = {}
         for channel in range(Gateway.NO_CHANNELS):
             self.channel_nodes[channel] = []
         assert environment in Simulation.ENVIRONMENT_TYPE
         if environment == "temp":
-            self.environment = TempEnvironment(self.sim_env, Location(MAX_DISTANCE, -MAX_DISTANCE),
-                                               Location(-MAX_DISTANCE, MAX_DISTANCE), 296.15, dx=GRID)
+            self.environment = TempEnvironment( Location(distance, -distance),
+                                               Location(-distance, distance), 296.15, self.num_steps * self.step_time, update_rate, dx=GRID)
         else:
             assert False, "%s environment is not implemented" %(environment)
-        self.sim_env.process(self.environment.update(update_rate))
         link = []
         for loc in connection:
             for l2 in connection[loc]:
@@ -52,17 +53,18 @@ class Simulation:
             node = Node(i, EnergyProfile(0.1), lora_para[i],
                                    self.air_interface, self.sim_env, nodes_positions[i], True)
             self.channel_nodes[lora_para[i].channel].append(node)
-            node.last_payload_sent = self.environment.sense(nodes_positions[i])
+            node.last_payload_sent = self.environment.sense(nodes_positions[i], self.sim_env.now)
             self.nodes.append(node)
         for i in range(len(gateway_positions)):
             self.gateways.append(Gateway(i, gateway_positions[i], self.sim_env))
 
         self.constructed_field = {}
         self.real_field = {}
+        self.temp_field = None
 
         if not lora_para_exist:
             print("Start generating new lora configuration file for " + config_name)
-            self.pre_adr(1000, True, percentage=0.2)
+            self.pre_adr(1000, True, percentage=0.4)
             pickle.dump([n.para for n in self.nodes], open(config_file, 'wb'))
             self.reset()
 
@@ -75,6 +77,7 @@ class Simulation:
         assert len(self.nodes) == len(actions)
         assert self.sim_env.now == self.steps * self.step_time
         self.constructed_field = self.field_reconstruction()
+        self.temp_field = self.environment.T_field[self.sim_env.now//self.update_rate]
         self.steps += 1
         send_index = [idx for idx, send in enumerate(actions) if send]
         for i in range(len(self.nodes)):
@@ -112,7 +115,6 @@ class Simulation:
         for i in range(len(self.nodes)):
             self.nodes[i].adr = True
         record_per = []
-        record_std = []
         for i in range(rounds):
             assert self.sim_env.now == self.steps * self.step_time
             self.steps += 1
@@ -124,16 +126,15 @@ class Simulation:
             for j in send_node:
                 self.sim_env.process(self._node_send_test(j))
             self.sim_env.run(self.step_time * self.steps)
-            per = np.zeros(N)
+            count = 0
             for j, idx in enumerate(send_node):
-                per[j] = self.nodes[idx].moving_average_per()
-            record_per.append(np.mean(per))
-            record_std.append(np.std(per))
+                if self.nodes[idx].last_packet_success:
+                    count += 1
+            record_per.append(1 - count/len(send_node))
         latest_per = record_per[-50:]
-        latest_std = record_std[-50:]
 
         count = 0
-        threshold = 0.2
+        threshold = 0.3
         while not self._check_adr_convergence(latest_per, threshold):
             for i in range(50):
                 assert self.sim_env.now == self.steps * self.step_time
@@ -142,27 +143,26 @@ class Simulation:
                 for j in send_node:
                     self.sim_env.process(self._node_send_test(j))
                 self.sim_env.run(self.step_time * self.steps)
-                per = np.zeros(N)
+                count = 0
                 for j, idx in enumerate(send_node):
-                    per[j] = self.nodes[idx].moving_average_per()
-                latest_per[i] = np.mean(per)
-                latest_std[i] = np.std(per)
+                    if self.nodes[idx].last_packet_success:
+                        count +=1
+                latest_per[i] = 1 - count/len(send_node)
             count += 1
             if count == int(10/percentage) or count == 30:
                 self.reset(True)
                 plt.figure(figsize=(5, 5))
-                plt.errorbar(range(len(record_per)), record_per, yerr=record_std, errorevery=int(len(record_per) / 25))
+                plt.scatter(range(len(record_per)), record_per)
                 plt.title("Running ADR...")
                 plt.xlabel("iterations")
                 plt.ylabel("Packet error rate")
                 plt.show()
                 return self.pre_adr(rounds, show, percentage)
             record_per.extend(latest_per)
-            record_std.extend(latest_std)
-        if np.average(record_per[-50:-1]) > 0.5:
+        if np.average(record_per[-50:-1]) > 0.6:
             self.reset(True)
             plt.figure(figsize=(5, 5))
-            plt.errorbar(range(len(record_per)), record_per, yerr=record_std, errorevery=int(len(record_per) / 25))
+            plt.scatter(range(len(record_per)), record_per)
             plt.title("Running ADR...")
             plt.xlabel("iterations")
             plt.ylabel("Packet error rate")
@@ -170,22 +170,20 @@ class Simulation:
             return self.pre_adr(rounds, show, percentage)
         if show:
             plt.figure(figsize=(5,5))
-            plt.errorbar(range(len(record_per)), record_per, yerr=record_std, errorevery=int(len(record_per)/25))
+            plt.scatter(range(len(record_per)), record_per)
             plt.title("Running ADR...")
             plt.xlabel("iterations")
             plt.ylabel("Packet error rate")
         for i in range(len(self.nodes)):
             self.nodes[i].adr = False
-        return record_per, record_std
+        return record_per
 
     def reset(self, reset_lora=False):
         self.sim_env = simpy.Environment()
         self.steps = 0
-        self.environment.reset(self.sim_env)
-        self.sim_env.process(self.environment.update(UPDATA_RATE))
         for i in range(len(self.nodes)):
             self.nodes[i].reset(self.sim_env)
-            self.nodes[i].last_payload_sent = self.environment.sense(self.nodes[i].location)
+            self.nodes[i].last_payload_sent = self.environment.sense(self.nodes[i].location, 0)
             if reset_lora:
                 self.nodes[i].para = LoRaParameters(i % Gateway.NO_CHANNELS, sf=12)
         for i in range(len(self.gateways)):
@@ -197,7 +195,9 @@ class Simulation:
         return np.max(mean) - np.min(mean) < difference
 
     def field_reconstruction(self):
-        return self.app.fusion_center.field_reconstruct(self.step_time * (self.steps))
+        prediction, changes = self.app.fusion_center.field_reconstruct(self.step_time * (self.steps))
+        # print(changes.values())
+        return prediction
 
 
     def eval_positive(self):
