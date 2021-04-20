@@ -9,8 +9,8 @@ from .utils import PacketInformation
 from .FieldReconstruction import FieldReconstructor
 
 class Application:
-    def __init__(self, node_ids, connection):
-        self.fusion_center = FieldReconstructor(node_ids, connection)
+    def __init__(self, node_ids, connection, field_update):
+        self.fusion_center = FieldReconstructor(node_ids, connection, field_update)
 
     def run(self, info):
         temp = info.payload['value']

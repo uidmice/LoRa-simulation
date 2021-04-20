@@ -1,5 +1,6 @@
 import numpy as np
 from config import *
+import random
 
 class FieldReconstructor:
     class LocalField:
@@ -53,13 +54,14 @@ class FieldReconstructor:
             self.hist[idx] += (update_node.s - self.s)/max(update_node.t - self.t, 1)
 
         def estimate(self, time):
-            return self.s + self.changes * (time - self.t)  + self.dchanges* (time - self.t)**2 , self.changes * (time - self.t)
+            return self.s + self.changes * (time - self.t), self.t, time - self.t
             # nearby_s = np.array([[a.s for a in self.node_index_dict]])
             # changes = (time - self.t) * np.dot(nearby_s- self.s, self.w)[0]
             # return self.s + min(max(changes, 5), -5), changes
 
-    def __init__(self, node_ids, connection):
+    def __init__(self, node_ids, connection, field_update):
         self.nodes = {}
+        self.field_update = field_update
         for id in node_ids:
             self.nodes[id] = FieldReconstructor.LocalField(id, init_temp)
         for link in connection:
@@ -74,13 +76,16 @@ class FieldReconstructor:
 
     def field_reconstruct(self, time):
         local = {}
-        changes = {}
+        last_time = {}
+        empty_time = {}
         for node in self.nodes:
-            local[node], changes[node] = self.field_estimate(node, time)
-        rt = {}
-        for node in self.nodes:
+            local[node], last_time[node], empty_time[node] = self.field_estimate(node, time)
+        list = [k for k, v in sorted(empty_time.items(), key=lambda item: item[1])]
+        for node in list:
             nearby = [n.id for n in self.nodes[node].node_index_dict]
-            nearby.append(node)
-            rt[node] = np.average([local[i] for i in nearby])
-        return rt, changes
+            if last_time[node] == 0:
+                local[node] = np.average([local[i] for i in nearby])
+            elif empty_time[node] > 4* self.field_update:
+                local[node] = 0.2 * local[node] + 0.8 * np.average([local[i] for i in nearby])
+        return local
 

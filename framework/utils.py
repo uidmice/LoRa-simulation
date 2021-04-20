@@ -8,6 +8,13 @@ from matplotlib.animation import FuncAnimation
 from scipy import interpolate
 import naturalneighbor
 
+def decimation(Z, n=2):
+    N = Z.shape[0]//n
+    rt = np.zeros((N, N))
+    for i in range(N):
+        for j in range(N):
+            rt[i,j] = np.average(Z[i*n: i*n + n, j*n: j*n + n])
+    return rt
 def extend_field(X, Y, Z, distance):
     xmin_idx = np.argpartition(X, 10)[:10]
     xmax_idx = np.setdiff1d(np.argpartition(X, -10)[-10:], xmin_idx)
@@ -155,7 +162,7 @@ def field_construct_data(simulation, num_steps, time_step, policy, save=False, s
         send, success = simulation.step(policy(simulation))
         reconstruction = simulation.constructed_field
         constructed_field = [reconstruction[n] for n in reconstruction]
-        true_field = [n.latest_sensed for n in simulation.nodes]
+        true_field = [simulation.real_field[n] for n in simulation.real_field]
         Z[k,:,:] = np.reshape(np.array(constructed_field), (N, N))
         Tr[k,:,:] = np.reshape(np.array(true_field), (N, N))
 
@@ -423,6 +430,14 @@ def Tdiff_threshold_policy(T_threshold, simulation):
         else:
             action.append(False)
     return action
+
+def fixed_policy(every_x_nodes, num_send_nodes, simulation):
+    rt = np.zeros(len(simulation.nodes), dtype=bool)
+    assert num_send_nodes <= every_x_nodes
+    for i in range(int(num_send_nodes)):
+        for j in range(i, len(simulation.nodes), int(every_x_nodes)):
+            rt[j] = True
+    return rt
 
 
 def random_policy(percentage, simulation, fixed_number=False):

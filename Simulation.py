@@ -39,7 +39,7 @@ class Simulation:
         for loc in connection:
             for l2 in connection[loc]:
                 link.append([nodes_positions.index(loc), nodes_positions.index(l2)])
-        self.app = Application(list(range(len(nodes_positions))), link)
+        self.app = Application(list(range(len(nodes_positions))), link, update_rate)
         self.server = Server(self.gateways, self.sim_env, self.app)
         self.air_interface = AirInterface(self.sim_env, self.gateways, self.server)
         config_file = './config/'+config_name+'_lora_'+ str(Gateway.NO_CHANNELS) +'.pickle'
@@ -197,8 +197,7 @@ class Simulation:
         return np.max(mean) - np.min(mean) < difference
 
     def field_reconstruction(self):
-        prediction, changes = self.app.fusion_center.field_reconstruct(self.step_time * (self.steps))
-        # print(changes.values())
+        prediction = self.app.fusion_center.field_reconstruct(self.step_time * (self.steps))
         return prediction
 
 
