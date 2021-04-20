@@ -80,7 +80,7 @@ class TempEnvironment(Environment):
         cx = int(round((location.x - self.upper_left.x)/self.dx))
         cy = int(round((location.y - self.lower_right.y)/self.dx))
 
-        return self.T_field[time//self.update_rate, cx, cy]
+        return self.T_field[int(time//self.update_rate), cx, cy]
 
 
     # def get_temperature_by_index(self, location):

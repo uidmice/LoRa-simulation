@@ -77,7 +77,7 @@ class Simulation:
         assert len(self.nodes) == len(actions)
         assert self.sim_env.now == self.steps * self.step_time
         self.constructed_field = self.field_reconstruction()
-        self.temp_field = self.environment.T_field[self.sim_env.now//self.update_rate]
+        self.temp_field = self.environment.T_field[int(self.sim_env.now//self.update_rate)]
         self.steps += 1
         send_index = [idx for idx, send in enumerate(actions) if send]
         for i in range(len(self.nodes)):
